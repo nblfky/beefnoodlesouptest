@@ -382,8 +382,9 @@
     th:nth-child(7), td:nth-child(7) { width: 60px; }   /* Unit */
     th:nth-child(8), td:nth-child(8) { width: 100px; }  /* Building */
     th:nth-child(9), td:nth-child(9) { width: 80px; }   /* Postcode */
-    th:nth-child(10), td:nth-child(10) { width: 120px; } /* Remarks */
-    th:nth-child(11), td:nth-child(11) { width: 140px; } /* Actions */
+    th:nth-child(10), td:nth-child(10) { width: 200px; } /* Address */
+    th:nth-child(11), td:nth-child(11) { width: 120px; } /* Remarks */
+    th:nth-child(12), td:nth-child(12) { width: 140px; } /* Actions */
     
     th { 
       background: var(--bg-secondary);
@@ -486,7 +487,7 @@
     /* Removed old swipe functionality */
 
     /* Mobile-specific fixed column widths */
-    table { min-width: 980px; }
+    table { min-width: 1120px; }
     th:nth-child(1), td:nth-child(1) { width: 35px; }   /* # */
     th:nth-child(2), td:nth-child(2) { width: 70px; }   /* Photo */
     th:nth-child(3), td:nth-child(3) { width: 100px; }  /* POI Name */
@@ -496,8 +497,9 @@
     th:nth-child(7), td:nth-child(7) { width: 50px; }   /* Unit */
     th:nth-child(8), td:nth-child(8) { width: 80px; }   /* Building */
     th:nth-child(9), td:nth-child(9) { width: 65px; }   /* Postcode */
-    th:nth-child(10), td:nth-child(10) { width: 100px; } /* Remarks */
-    th:nth-child(11), td:nth-child(11) { width: 120px; } /* Actions */
+    th:nth-child(10), td:nth-child(10) { width: 160px; } /* Address */
+    th:nth-child(11), td:nth-child(11) { width: 100px; } /* Remarks */
+    th:nth-child(12), td:nth-child(12) { width: 120px; } /* Actions */
     }
 
     /* Extra small phones */
@@ -533,7 +535,7 @@
       }
 
     /* Extra small phone fixed column widths */
-    table { min-width: 840px; }
+    table { min-width: 1000px; }
     th:nth-child(1), td:nth-child(1) { width: 30px; }   /* # */
     th:nth-child(2), td:nth-child(2) { width: 60px; }   /* Photo */
     th:nth-child(3), td:nth-child(3) { width: 80px; }   /* POI Name */
@@ -543,8 +545,9 @@
     th:nth-child(7), td:nth-child(7) { width: 40px; }   /* Unit */
     th:nth-child(8), td:nth-child(8) { width: 70px; }   /* Building */
     th:nth-child(9), td:nth-child(9) { width: 55px; }   /* Postcode */
-    th:nth-child(10), td:nth-child(10) { width: 80px; } /* Remarks */
-    th:nth-child(11), td:nth-child(11) { width: 100px; } /* Actions */
+    th:nth-child(10), td:nth-child(10) { width: 120px; } /* Address */
+    th:nth-child(11), td:nth-child(11) { width: 80px; } /* Remarks */
+    th:nth-child(12), td:nth-child(12) { width: 100px; } /* Actions */
     }
 
     /* Loading and animation improvements */
