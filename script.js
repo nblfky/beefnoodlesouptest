@@ -1047,6 +1047,48 @@ async function reverseGeocodeOSM(lat, lng) {
   }
 }
 
+// --- OpenStreetMap Nominatim search by name (fallback when OneMap search fails) ---
+// Returns { lat, lng, address, components }
+async function searchStoreLocationOSM(storeName, currentLat = null, currentLng = null) {
+  try {
+    if (!storeName) return null;
+    const q = encodeURIComponent(storeName);
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${q}`;
+    const res = await fetchWithTimeout(url, { timeoutMs: SEARCH_TIMEOUT_MS, headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const results = await res.json();
+    if (!Array.isArray(results) || results.length === 0) return null;
+
+    // Pick best result by proximity if we have current location
+    let best = results[0];
+    if (currentLat && currentLng) {
+      let bestDist = Infinity;
+      for (const r of results) {
+        if (!r.lat || !r.lon) continue;
+        const d = calculateDistance(parseFloat(currentLat), parseFloat(currentLng), parseFloat(r.lat), parseFloat(r.lon));
+        if (d < bestDist) { bestDist = d; best = r; }
+      }
+    }
+
+    const addressObj = best.address || {};
+    const addrFormatted = (best.display_name || '').trim();
+    return {
+      lat: parseFloat(best.lat).toFixed(6),
+      lng: parseFloat(best.lon).toFixed(6),
+      address: addrFormatted,
+      components: {
+        houseNo: addressObj.house_number || addressObj.block || 'Not Found',
+        street: addressObj.road || addressObj.pedestrian || addressObj.footway || addressObj.street || 'Not Found',
+        building: addressObj.building || addressObj.public_building || addressObj.commercial || addressObj.shop || 'Not Found',
+        postcode: addressObj.postcode || 'Not Found'
+      }
+    };
+  } catch (err) {
+    console.warn('OSM name search failed', err);
+    return null;
+  }
+}
+
 // --- OneMap Search API for finding store locations ---
 // Search for places by name using OneMap's search API
 // Returns the best matching location with coordinates and address
@@ -1643,6 +1685,18 @@ async function performScanFromCanvas(canvas) {
     statusDiv.textContent = 'Finding store location…';
     try {
       storeLocation = await searchStoreLocation(parsed.storeName, geo.lat, geo.lng);
+      if (!storeLocation) {
+        // Fallback to OSM name search
+        const osmRes = await searchStoreLocationOSM(parsed.storeName, geo.lat, geo.lng);
+        if (osmRes) {
+          storeLocation = { lat: osmRes.lat, lng: osmRes.lng, address: osmRes.address };
+          // Fill address parts if we found them
+          parsed.houseNo = osmRes.components.houseNo;
+          parsed.street = osmRes.components.street;
+          parsed.building = osmRes.components.building;
+          parsed.postcode = osmRes.components.postcode;
+        }
+      }
     } catch (_) { storeLocation = null; }
   }
 
@@ -1663,7 +1717,6 @@ async function performScanFromCanvas(canvas) {
         const osm = await reverseGeocodeOSM(geo.lat, geo.lng);
         if (osm) {
           address = osm.formatted;
-          // Fill components into parsed fields for the table
           parsed.houseNo = osm.houseNo;
           parsed.street = osm.street;
           parsed.building = osm.building;
