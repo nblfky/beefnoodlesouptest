@@ -361,7 +361,6 @@ function renderTable() {
       <td>${scan.unitNumber}</td>
       <td>${building}</td>
       <td>${postcode}</td>
-      <td>${scan.address || 'Not Found'}</td>
       <td class="remarks-cell">
         <input type="text" class="remarks-input" value="${remarksValue}" 
                placeholder="Add remarks..." data-index="${idx}">
