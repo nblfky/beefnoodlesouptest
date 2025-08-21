@@ -1568,22 +1568,26 @@ async function performScanFromCanvas(canvas) {
     finalLat = storeLocation.lat;
     finalLng = storeLocation.lng;
     address = storeLocation.address;
+    // Propagate components from OSM name search if present
+    if (storeLocation.components) {
+      parsed.houseNo = storeLocation.components.houseNo || parsed.houseNo;
+      parsed.street = storeLocation.components.street || parsed.street;
+      parsed.building = storeLocation.components.building || parsed.building;
+      parsed.postcode = storeLocation.components.postcode || parsed.postcode;
+    }
     console.log(`Found store location: ${parsed.storeName} at ${finalLat}, ${finalLng}`);
   } else {
     // Fallback to device location and reverse geocode
     finalLat = geo.lat || 'Not Found';
     finalLng = geo.lng || 'Not Found';
     if (geo.lat && geo.lng) {
-      try { address = await reverseGeocode(geo.lat, geo.lng); } catch (_) { address = ''; }
-      if (!address) {
-        const osm = await reverseGeocodeOSM(geo.lat, geo.lng);
-        if (osm) {
-          address = osm.formatted;
-          parsed.houseNo = osm.houseNo;
-          parsed.street = osm.street;
-          parsed.building = osm.building;
-          parsed.postcode = osm.postcode;
-        }
+      const osm = await reverseGeocodeOSM(geo.lat, geo.lng);
+      if (osm) {
+        address = osm.formatted;
+        parsed.houseNo = osm.houseNo;
+        parsed.street = osm.street;
+        parsed.building = osm.building;
+        parsed.postcode = osm.postcode;
       }
     }
     
@@ -1591,6 +1595,13 @@ async function performScanFromCanvas(canvas) {
       address = parsed.address || 'Not Found';
     }
   }
+
+  // Ensure parsed has address component fields initialized
+  parsed = parsed || {};
+  parsed.houseNo = parsed.houseNo || 'Not Found';
+  parsed.street = parsed.street || 'Not Found';
+  parsed.building = parsed.building || 'Not Found';
+  parsed.postcode = parsed.postcode || 'Not Found';
 
   // Store photo data with the scan
   const timestamp = new Date().toISOString();
