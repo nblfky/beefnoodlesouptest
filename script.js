@@ -1005,15 +1005,15 @@ async function reverseGeocodeOSM(lat, lng) {
     const data = await res.json();
     const addr = data.address || {};
     const formatted = (data.display_name || '').trim();
-    const houseNo = addr.house_number || addr.block || '';
-    const street = addr.road || addr.pedestrian || addr.footway || addr.street || '';
-    const building = addr.building || addr.public_building || addr.commercial || addr.shop || '';
-    const postcode = addr.postcode || '';
+    const houseNo = addr.house_number || addr.house_name || addr.block || '';
+    const street = addr.road || addr.residential || addr.pedestrian || addr.footway || addr.street || addr.path || '';
+    const buildingName = addr.building || addr.amenity || addr.shop || addr.office || addr.tourism || addr.leisure || addr.public_building || addr.hospital || addr.university || addr.school || data.name || '';
+    const postcode = addr.postcode || addr['postal_code'] || '';
     return {
       formatted,
-      houseNo: houseNo || 'Not Found',
-      street: street || 'Not Found',
-      building: building || 'Not Found',
+      houseNo: (houseNo || '').trim() || 'Not Found',
+      street: (street || '').trim() || 'Not Found',
+      building: (buildingName || '').trim() || 'Not Found',
       postcode: postcode || 'Not Found'
     };
   } catch (err) {
@@ -1047,15 +1047,16 @@ async function searchStoreLocationOSM(storeName, currentLat = null, currentLng =
 
     const addressObj = best.address || {};
     const addrFormatted = (best.display_name || '').trim();
+    const buildingName = addressObj.building || addressObj.amenity || addressObj.shop || addressObj.office || addressObj.tourism || addressObj.leisure || addressObj.hospital || best.name || '';
     return {
       lat: parseFloat(best.lat).toFixed(6),
       lng: parseFloat(best.lon).toFixed(6),
       address: addrFormatted,
       components: {
-        houseNo: addressObj.house_number || addressObj.block || 'Not Found',
-        street: addressObj.road || addressObj.pedestrian || addressObj.footway || addressObj.street || 'Not Found',
-        building: addressObj.building || addressObj.public_building || addressObj.commercial || addressObj.shop || 'Not Found',
-        postcode: addressObj.postcode || 'Not Found'
+        houseNo: addressObj.house_number || addressObj.house_name || addressObj.block || 'Not Found',
+        street: addressObj.road || addressObj.residential || addressObj.pedestrian || addressObj.footway || addressObj.street || addressObj.path || 'Not Found',
+        building: buildingName || 'Not Found',
+        postcode: addressObj.postcode || addressObj['postal_code'] || 'Not Found'
       }
     };
   } catch (err) {
