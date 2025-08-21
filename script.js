@@ -989,34 +989,9 @@ function getCurrentLocation(initial = false) {
 //    without having to worry about the exact schema version.
 // 3. Falls back to the `ADDRESS` field when it is already formatted.
 async function reverseGeocode(lat, lng) {
-  try {
-    // Newer API version expects separate lat & lon query params (see https://docs.onemap.sg/#revgeocode)
-    const url = `https://developers.onemap.sg/commonapi/revgeocode?lat=${lat}&lon=${lng}&returnGeom=N&getAddrDetails=Y`;
-    const res = await fetchWithTimeout(url, { timeoutMs: REVERSE_TIMEOUT_MS });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    // Handle both possible response shapes
-    const result = (data.GeocodeInfo || data.results || data.ReverseGeocodeInfo)?.[0];
-    if (!result) return '';
-
-    // Normalise keys so we can treat both schemas uniformly
-    const blk   = result.BLOCK      || result.BLK_NO      || result.block      || result.blk_no;
-    const road  = result.ROAD       || result.ROAD_NAME   || result.road       || result.road_name;
-    const bldg  = result.BUILDING   || result.BUILDINGNAME|| result.building   || result.buildingname;
-    const postal= result.POSTAL     || result.POSTALCODE  || result.postal     || result.postalcode;
-    const addr  = result.ADDRESS    || result.address;
-
-    // Prefer a pre-formatted ADDRESS string if provided
-    if (addr) return addr.trim();
-
-    // Otherwise stitch together what we have
-    const parts = [blk, road, bldg, 'SINGAPORE', postal].filter(Boolean);
-    return parts.join(' ').trim();
-  } catch (err) {
-    console.warn('Reverse geocode failed', err);
-    return '';
-  }
+  // Switch to OpenStreetMap Nominatim exclusively
+  const osm = await reverseGeocodeOSM(lat, lng);
+  return osm && osm.formatted ? osm.formatted : '';
 }
 
 // --- OpenStreetMap Nominatim reverse geocode (fallback + components) ---
@@ -1093,121 +1068,8 @@ async function searchStoreLocationOSM(storeName, currentLat = null, currentLng =
 // Search for places by name using OneMap's search API
 // Returns the best matching location with coordinates and address
 async function searchStoreLocation(storeName, currentLat = null, currentLng = null) {
-  if (!storeName || storeName === 'Not Found' || storeName === 'Unknown') {
-    return null;
-  }
-
-  try {
-    // Clean up store name for search
-    const cleanStoreName = storeName.replace(/[^\w\s]/g, ' ').trim();
-    if (!cleanStoreName) return null;
-
-    // Use OneMap search API (public endpoint - no key required)
-    const url = `https://developers.onemap.sg/commonapi/search?searchVal=${encodeURIComponent(cleanStoreName)}&returnGeom=Y&getAddrDetails=Y`;
-    const headers = {};
-    
-    // If OneMap API key is available, could use authenticated endpoints for better performance
-    // (Currently using free public endpoints which work fine)
-    if (oneMapApiKey) {
-      console.log('OneMap API key available for future authenticated endpoints');
-    }
-    
-    const res = await fetchWithTimeout(url, { headers, timeoutMs: SEARCH_TIMEOUT_MS });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    // Check if we have results
-    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
-      console.log(`No search results found for: ${storeName}`);
-      return null;
-    }
-
-    let bestMatch = data.results[0]; // Default to first result
-
-    // If we have current location, find the closest match
-    if (currentLat && currentLng && data.results.length > 1) {
-      let closestDistance = Infinity;
-      
-      for (const result of data.results) {
-        if (result.LATITUDE && result.LONGITUDE) {
-          const distance = calculateDistance(
-            parseFloat(currentLat),
-            parseFloat(currentLng),
-            parseFloat(result.LATITUDE),
-            parseFloat(result.LONGITUDE)
-          );
-          
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            bestMatch = result;
-          }
-        }
-      }
-    }
-
-    // Debug: Log the raw response to understand the structure
-    console.log('OneMap search response for', storeName, ':', bestMatch);
-
-    // Extract coordinates and address from the best match
-    const lat = bestMatch.LATITUDE || bestMatch.lat;
-    const lng = bestMatch.LONGITUDE || bestMatch.lng;
-    
-    // Try multiple ways to extract address
-    let address = '';
-    
-    // Method 1: Check for pre-formatted address
-    if (bestMatch.ADDRESS) {
-      address = bestMatch.ADDRESS.trim();
-    } else if (bestMatch.address) {
-      address = bestMatch.address.trim();
-    }
-    
-    // Method 2: Build address from components (more reliable)
-    if (!address) {
-      const addressParts = [
-        bestMatch.BLK_NO || bestMatch.BLOCK,
-        bestMatch.ROAD_NAME || bestMatch.ROAD,
-        bestMatch.BUILDING || bestMatch.BUILDINGNAME,
-        bestMatch.POSTAL || bestMatch.POSTALCODE
-      ].filter(Boolean);
-      
-      if (addressParts.length) {
-        address = addressParts.join(' ') + ', SINGAPORE';
-      }
-    }
-    
-    // Method 3: Use the search value as fallback with "Singapore" appended
-    if (!address && bestMatch.SEARCHVAL) {
-      address = bestMatch.SEARCHVAL + ', SINGAPORE';
-    }
-
-    if (!lat || !lng) {
-      console.warn('No coordinates found in search result for', storeName);
-      return null;
-    }
-
-    // Method 4: If still no address, try reverse geocoding the found coordinates
-    if (!address || address === 'Address not found') {
-      console.log(`No address from search, trying reverse geocoding for coordinates: ${lat}, ${lng}`);
-      const reverseGeocodedAddress = await reverseGeocode(lat, lng);
-      if (reverseGeocodedAddress) {
-        address = reverseGeocodedAddress;
-        console.log(`Got address from reverse geocoding: "${address}"`);
-      }
-    }
-
-    console.log(`Final extracted address for ${storeName}: "${address}"`);
-
-    return {
-      lat: parseFloat(lat).toFixed(6),
-      lng: parseFloat(lng).toFixed(6),
-      address: address || 'Address not found'
-    };
-
-  } catch (err) {
-    console.warn(`OneMap search failed for "${storeName}":`, err);
-    return null;
-  }
+  // Use OSM exclusively
+  return await searchStoreLocationOSM(storeName, currentLat, currentLng);
 }
 
 // Helper function to calculate distance between two coordinates (Haversine formula)
