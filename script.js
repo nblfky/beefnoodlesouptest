@@ -682,7 +682,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     alert('No data to export');
     return;
   }
-  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Address','Remarks','Photo Available','Timestamp'];
+  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Remarks','Photo Available','Timestamp'];
   const csvRows = [headers.join(',')];
   scans.forEach(s => {
     // Format Lat-Long as a single field
@@ -698,7 +698,6 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       s.unitNumber, 
       s.building || 'Not Found', 
       s.postcode || 'Not Found', 
-      s.address || 'Not Found',
       s.remarks || '',
       s.photoData ? 'Yes' : 'No',
       s.timestamp || 'Unknown'
