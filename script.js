@@ -179,10 +179,10 @@ function migrateScansData() {
       photoData: scan.photoData || null,
       timestamp: scan.timestamp || new Date().toISOString(),
       photoFilename: scan.photoFilename || null,
-      houseNo: scan.houseNo || 'Not Found',
-      street: scan.street || 'Not Found', 
-      building: scan.building || 'Not Found',
-      postcode: scan.postcode || 'Not Found'
+      houseNo: scan.houseNo || '',
+      street: scan.street || '', 
+      building: scan.building || '',
+      postcode: scan.postcode || ''
     };
   });
   saveScans();
@@ -337,15 +337,15 @@ function renderTable() {
     const remarksValue = scan.remarks || '';
     
     // Format Lat-Long as a single field
-    const latLong = (scan.lat && scan.lng && scan.lat !== 'Not Found' && scan.lng !== 'Not Found') 
+    const latLong = (scan.lat && scan.lng) 
       ? `${scan.lat}, ${scan.lng}` 
-      : 'Not Found';
+      : '';
     
-    // Parse address components (for now, use placeholders until address parsing is implemented)
-    const houseNo = scan.houseNo || 'Not Found';
-    const street = scan.street || 'Not Found';
-    const building = scan.building || 'Not Found';
-    const postcode = scan.postcode || 'Not Found';
+    // Parse address components
+    const houseNo = scan.houseNo || '';
+    const street = scan.street || '';
+    const building = scan.building || '';
+    const postcode = scan.postcode || '';
     
     // Create photo cell content - ensure it's always a complete cell
     let photoCell;
@@ -700,18 +700,16 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   const csvRows = [headers.join(',')];
   scans.forEach(s => {
     // Format Lat-Long as a single field
-    const latLong = (s.lat && s.lng && s.lat !== 'Not Found' && s.lng !== 'Not Found') 
-      ? `${s.lat}, ${s.lng}` 
-      : 'Not Found';
+    const latLong = (s.lat && s.lng) ? `${s.lat}, ${s.lng}` : '';
     
     const row = [
       s.storeName, 
       latLong,
-      s.houseNo || 'Not Found', 
-      s.street || 'Not Found', 
+      s.houseNo || '', 
+      s.street || '', 
       s.unitNumber, 
-      s.building || 'Not Found', 
-      s.postcode || 'Not Found', 
+      s.building || '', 
+      s.postcode || '', 
       s.remarks || '',
       s.photoData ? 'Yes' : 'No',
       s.timestamp || 'Unknown'
@@ -1590,14 +1588,14 @@ async function performScanFromCanvas(canvas) {
 
   // Reverse geocode based on current device location (Singapore)
   let finalLat, finalLng, addressParts;
-  finalLat = geo.lat || 'Not Found';
-  finalLng = geo.lng || 'Not Found';
+  finalLat = geo.lat || '';
+  finalLng = geo.lng || '';
   if (geo.lat && geo.lng) {
     try {
       addressParts = await reverseGeocode(geo.lat, geo.lng);
     } catch (_) { addressParts = { address: '', houseNo: '', street: '', building: '', postcode: '' }; }
   } else {
-    addressParts = { address: parsed?.address || 'Not Found', houseNo: '', street: '', building: '', postcode: '' };
+    addressParts = { address: parsed?.address || '', houseNo: '', street: '', building: '', postcode: '' };
   }
 
   // Store photo data with the scan
@@ -1615,11 +1613,11 @@ async function performScanFromCanvas(canvas) {
     { 
       lat: finalLat, 
       lng: finalLng, 
-      address: addressParts?.address || parsed?.address || 'Not Found',
-      houseNo: addressParts?.houseNo || parsed?.houseNo || 'Not Found',
-      street: addressParts?.street || parsed?.street || 'Not Found',
-      building: addressParts?.building || parsed?.building || 'Not Found',
-      postcode: addressParts?.postcode || parsed?.postcode || 'Not Found',
+      address: addressParts?.address || parsed?.address || '',
+      houseNo: addressParts?.houseNo || parsed?.houseNo || '',
+      street: addressParts?.street || parsed?.street || '',
+      building: addressParts?.building || parsed?.building || '',
+      postcode: addressParts?.postcode || parsed?.postcode || '',
       photoData: thumbDataUrl,
       timestamp: timestamp,
       photoFilename: photoFilename,
@@ -1973,16 +1971,16 @@ function extractInfo(rawText, ocrLines = []) {
   }
 
   // Use "Not Found" when a field could not be extracted to match strict rules
-  if (!storeName) storeName = 'Not Found';
-  if (!unitNumber) unitNumber = 'Not Found';
-  if (!openingHours) openingHours = 'Not Found'; // kept for future reference
-  if (!phone) phone = 'Not Found';              // kept for future reference
-  if (!website) website = 'Not Found';          // kept for future reference
+  if (!storeName) storeName = '';
+  if (!unitNumber) unitNumber = '';
+  if (!openingHours) openingHours = ''; // kept for future reference
+  if (!phone) phone = '';              // kept for future reference
+  if (!website) website = '';          // kept for future reference
 
   // Placeholder – address extraction will be implemented later or via geocoding
   let address = '';
 
-  if (!address) address = 'Not Found';
+  if (!address) address = '';
 
   return {
     storeName,
@@ -2327,6 +2325,16 @@ function initializeMaps() {
   setTimeout(() => {
     addMapInteractionHandlers();
   }, 500);
+}
+// Minimize/expand mini map
+const toggleMiniMapBtn = document.getElementById('toggleMiniMapBtn');
+if (toggleMiniMapBtn) {
+  toggleMiniMapBtn.addEventListener('click', () => {
+    const miniMapEl = document.getElementById('miniMap');
+    if (!miniMapEl) return;
+    const minimized = miniMapEl.classList.toggle('minimized');
+    toggleMiniMapBtn.textContent = minimized ? '▸' : '▾';
+  });
 }
 
 // Add tile layers with multiple fallback sources
