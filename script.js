@@ -833,125 +833,7 @@ document.getElementById('downloadAllPhotosBtn').addEventListener('click', async 
   }
 });
 
-// Combined Export: CSV + All Photos
-document.getElementById('exportAllBtn').addEventListener('click', async () => {
-  // Trigger CSV export first (reuse existing logic by calling the handler body)
-  if (!scans.length) {
-    alert('No data to export');
-    return;
-  }
-  // Build and download CSV (copied from exportBtn handler to avoid refactor)
-  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Remarks','Photo Available','Timestamp'];
-  const csvRows = [headers.join(',')];
-  scans.forEach(s => {
-    const latLong = (s.lat && s.lng && s.lat !== 'Not Found' && s.lng !== 'Not Found') ? `${s.lat}, ${s.lng}` : 'Not Found';
-    const row = [
-      s.storeName,
-      latLong,
-      s.houseNo || 'Not Found',
-      s.street || 'Not Found',
-      s.unitNumber,
-      s.building || 'Not Found',
-      s.postcode || 'Not Found',
-      s.remarks || '',
-      s.photoData ? 'Yes' : 'No',
-      s.timestamp || 'Unknown'
-    ].map(v => '"' + (v || '').replace(/"/g,'""') + '"').join(',');
-    csvRows.push(row);
-  });
-  const blob = new Blob([csvRows.join('\n')], {type:'text/csv'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'storefront_scans.csv';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
-
-  // Then trigger photo ZIP download (reuse same logic as downloadAllPhotosBtn handler)
-  const photosWithData = scans.filter(scan => scan.photoData);
-  if (photosWithData.length === 0) {
-    // No photos to zip; we're done after CSV
-    return;
-  }
-
-  // Prepare ZIP
-  try {
-    const exportAllBtn = document.getElementById('exportAllBtn');
-    const originalText = exportAllBtn.textContent;
-    exportAllBtn.textContent = '📦 Preparing photos...';
-    exportAllBtn.disabled = true;
-
-    if (!window.JSZip) {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-      document.head.appendChild(script);
-      await new Promise((resolve, reject) => { script.onload = resolve; script.onerror = reject; });
-    }
-
-    const zip = new JSZip();
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const addPromises = photosWithData.map(async (scan, index) => {
-      const filename = scan.photoFilename || `bnsVision_${scan.storeName || `scan_${index + 1}`}_photo.jpg`;
-      let blob = null;
-      if (scan.photoId) {
-        blob = await getPhotoBlob(scan.photoId);
-      }
-      if (!blob && scan.photoData && scan.photoData.startsWith('data:image/')) {
-        const res = await fetch(scan.photoData);
-        blob = await res.blob();
-      }
-      if (blob) {
-        const arrayBuffer = await blob.arrayBuffer();
-        zip.file(filename, arrayBuffer);
-      }
-    });
-    await Promise.all(addPromises);
-
-    exportAllBtn.textContent = '📦 Creating ZIP...';
-    const zipBlob = await zip.generateAsync({type: 'blob'});
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const zipName = `bnsVision_all_photos_${timestamp}.zip`;
-
-    if (navigator.share && navigator.canShare) {
-      try {
-        const file = new File([zipBlob], zipName, { type: 'application/zip' });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ title: 'bnsVision Photos', files: [file] });
-          showPhotoSavedNotification(`📤 Shared ${photosWithData.length} photos`, false);
-          exportAllBtn.textContent = originalText;
-          exportAllBtn.disabled = false;
-          return;
-        }
-      } catch (shareErr) {
-        if (shareErr && shareErr.name === 'AbortError') { exportAllBtn.textContent = originalText; exportAllBtn.disabled = false; return; }
-      }
-    }
-
-    const zipUrl = URL.createObjectURL(zipBlob);
-    if (isIOS) {
-      window.open(zipUrl, '_blank');
-      showPhotoSavedNotification('📦 Tap Share → Save to Files', false);
-    } else {
-      const link = document.createElement('a');
-      link.href = zipUrl;
-      link.download = zipName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showPhotoSavedNotification(`Downloaded ${photosWithData.length} photos`, false);
-    }
-    setTimeout(() => URL.revokeObjectURL(zipUrl), 2000);
-    exportAllBtn.textContent = originalText;
-    exportAllBtn.disabled = false;
-  } catch (error) {
-    console.error('Combined export failed:', error);
-    showPhotoSavedNotification('Failed to create photo archive. Try again.', true);
-    const exportAllBtn = document.getElementById('exportAllBtn');
-    exportAllBtn.textContent = 'Export All (CSV + Photos)';
-    exportAllBtn.disabled = false;
-  }
-});
+// Removed combined Export All handler
 
 // --- Manual store location search ---
 const storeSearchInput = document.getElementById('storeSearchInput');
@@ -1251,6 +1133,13 @@ async function initCamera() {
     });
     video.srcObject = stream;
     window.currentCameraStream = stream;
+    try {
+      const track = stream.getVideoTracks && stream.getVideoTracks()[0];
+      if (track) {
+        enableAutofocus(track);
+        initTrackZoom(track);
+      }
+    } catch (_) {}
     // After permission granted, enumerate to find ultra-wide if available
     detectAvailableCameras().catch(()=>{});
   } catch (err) {
@@ -1264,9 +1153,100 @@ initCamera();
 // --- Zoom functionality ---
 const defaultZoom = 1.0;
 let currentZoom = defaultZoom;
-const minZoom = 0.5; // allow zooming out to 0.5x
-const maxZoom = 5.0;
-const zoomStep = 0.2;
+let minZoom = 0.5; // allow zooming out to 0.5x (fallback CSS)
+let maxZoom = 5.0;
+let zoomStep = 0.2;
+let useTrackZoom = false; // prefer hardware zoom when supported
+let trackCapabilities = null;
+
+// Try to enable continuous autofocus when available
+function enableAutofocus(track) {
+  try {
+    const caps = track.getCapabilities && track.getCapabilities();
+    if (!caps) return;
+    // Some browsers expose focusMode; try continuous or auto
+    const modes = caps.focusMode || caps.focusModes || [];
+    if (Array.isArray(modes)) {
+      if (modes.includes('continuous')) {
+        track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(()=>{});
+      } else if (modes.includes('auto')) {
+        track.applyConstraints({ advanced: [{ focusMode: 'auto' }] }).catch(()=>{});
+      }
+    }
+  } catch (_) {}
+}
+
+// Prefer native camera zoom if supported by the track
+function initTrackZoom(track) {
+  try {
+    const caps = track.getCapabilities && track.getCapabilities();
+    if (caps && typeof caps.zoom === 'object' && typeof caps.zoom.min === 'number') {
+      useTrackZoom = true;
+      trackCapabilities = caps;
+      // Align UI limits with hardware limits
+      minZoom = typeof caps.zoom.min === 'number' ? caps.zoom.min : minZoom;
+      maxZoom = typeof caps.zoom.max === 'number' ? caps.zoom.max : maxZoom;
+      const range = Math.max(0.1, maxZoom - minZoom);
+      zoomStep = Math.max(0.05, range / 20);
+    }
+  } catch (_) {}
+}
+
+// Tap-to-focus (best-effort). Uses pointsOfInterest when available.
+video.addEventListener('click', (e) => {
+  try {
+    const stream = window.currentCameraStream;
+    if (!stream) return;
+    const track = stream.getVideoTracks && stream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return;
+    const caps = track.getCapabilities();
+    const rect = video.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
+    // Visual focus indicator
+    showFocusRing(e.clientX, e.clientY);
+
+    const advanced = [];
+    if (caps.pointsOfInterest) {
+      advanced.push({ pointsOfInterest: [{ x: Math.min(Math.max(x, 0), 1), y: Math.min(Math.max(y, 0), 1) }] });
+    }
+    const modes = caps.focusMode || [];
+    if (Array.isArray(modes) && modes.includes('single-shot')) {
+      advanced.push({ focusMode: 'single-shot' });
+    }
+    if (advanced.length) {
+      track.applyConstraints({ advanced }).catch(()=>{});
+    }
+  } catch (_) {}
+});
+
+function showFocusRing(clientX, clientY) {
+  try {
+    const ring = document.createElement('div');
+    ring.style.position = 'fixed';
+    ring.style.left = (clientX - 30) + 'px';
+    ring.style.top = (clientY - 30) + 'px';
+    ring.style.width = '60px';
+    ring.style.height = '60px';
+    ring.style.border = '2px solid #00b14f';
+    ring.style.borderRadius = '8px';
+    ring.style.boxShadow = '0 0 8px rgba(0,0,0,0.25)';
+    ring.style.pointerEvents = 'none';
+    ring.style.zIndex = '9999';
+    ring.style.transition = 'opacity 400ms ease, transform 400ms ease';
+    document.body.appendChild(ring);
+    requestAnimationFrame(() => {
+      ring.style.transform = 'scale(0.9)';
+      ring.style.opacity = '0.85';
+    });
+    setTimeout(() => {
+      ring.style.opacity = '0';
+      ring.style.transform = 'scale(1.1)';
+      setTimeout(() => { if (ring.parentNode) ring.parentNode.removeChild(ring); }, 300);
+    }, 500);
+  } catch (_) {}
+}
 
 // Device-based zoom (switching physical lenses when available)
 let cameraDevices = { wide: null, ultra: null };
@@ -1337,22 +1317,27 @@ async function switchToCamera(type) {
 // Zoom state management
 function updateZoomLevel(newZoom) {
   currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
-  
-  // If user requests <= ~0.6x and an ultra-wide lens exists, switch to it
-  if (currentZoom <= 0.6 && currentCameraType !== 'ultra' && cameraDevices.ultra) {
-    switchToCamera('ultra');
-    // Keep CSS at 1 when using hardware ultra-wide; snap display to 0.5x
-    currentZoom = 0.5;
-  } else if (currentZoom > 0.6 && currentCameraType !== 'wide' && cameraDevices.wide) {
-    // Switch back to the wide lens for >0.6x
-    switchToCamera('wide');
-    currentZoom = Math.max(1.0, currentZoom);
-  }
 
-  // Apply CSS zoom only as a visual fallback for micro-adjustments
-  const cssScale = currentCameraType === 'ultra' ? Math.max(1, currentZoom / 0.5) : currentZoom;
-  video.style.transform = `scale(${cssScale})`;
-  video.style.transformOrigin = 'center center';
+  // Prefer hardware zoom when supported
+  const stream = window.currentCameraStream;
+  const track = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+  if (useTrackZoom && track && track.applyConstraints) {
+    track.applyConstraints({ advanced: [{ zoom: currentZoom }] }).catch(()=>{});
+    // Keep CSS scale at 1 when hardware zoom is active
+    video.style.transform = 'scale(1)';
+  } else {
+    // Device-based lens switch heuristics remain (for FOV changes)
+    if (currentZoom <= 0.6 && currentCameraType !== 'ultra' && cameraDevices.ultra) {
+      switchToCamera('ultra');
+      currentZoom = 0.5;
+    } else if (currentZoom > 0.6 && currentCameraType !== 'wide' && cameraDevices.wide) {
+      switchToCamera('wide');
+      currentZoom = Math.max(1.0, currentZoom);
+    }
+    const cssScale = currentCameraType === 'ultra' ? Math.max(1, currentZoom / 0.5) : currentZoom;
+    video.style.transform = `scale(${cssScale})`;
+    video.style.transformOrigin = 'center center';
+  }
   
   // Update zoom level display
   zoomLevelSpan.textContent = `${currentZoom.toFixed(1)}x`;
