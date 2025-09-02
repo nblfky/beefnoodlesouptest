@@ -833,6 +833,126 @@ document.getElementById('downloadAllPhotosBtn').addEventListener('click', async 
   }
 });
 
+// Combined Export: CSV + All Photos
+document.getElementById('exportAllBtn').addEventListener('click', async () => {
+  // Trigger CSV export first (reuse existing logic by calling the handler body)
+  if (!scans.length) {
+    alert('No data to export');
+    return;
+  }
+  // Build and download CSV (copied from exportBtn handler to avoid refactor)
+  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Remarks','Photo Available','Timestamp'];
+  const csvRows = [headers.join(',')];
+  scans.forEach(s => {
+    const latLong = (s.lat && s.lng && s.lat !== 'Not Found' && s.lng !== 'Not Found') ? `${s.lat}, ${s.lng}` : 'Not Found';
+    const row = [
+      s.storeName,
+      latLong,
+      s.houseNo || 'Not Found',
+      s.street || 'Not Found',
+      s.unitNumber,
+      s.building || 'Not Found',
+      s.postcode || 'Not Found',
+      s.remarks || '',
+      s.photoData ? 'Yes' : 'No',
+      s.timestamp || 'Unknown'
+    ].map(v => '"' + (v || '').replace(/"/g,'""') + '"').join(',');
+    csvRows.push(row);
+  });
+  const blob = new Blob([csvRows.join('\n')], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'storefront_scans.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+
+  // Then trigger photo ZIP download (reuse same logic as downloadAllPhotosBtn handler)
+  const photosWithData = scans.filter(scan => scan.photoData);
+  if (photosWithData.length === 0) {
+    // No photos to zip; we're done after CSV
+    return;
+  }
+
+  // Prepare ZIP
+  try {
+    const exportAllBtn = document.getElementById('exportAllBtn');
+    const originalText = exportAllBtn.textContent;
+    exportAllBtn.textContent = '📦 Preparing photos...';
+    exportAllBtn.disabled = true;
+
+    if (!window.JSZip) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      document.head.appendChild(script);
+      await new Promise((resolve, reject) => { script.onload = resolve; script.onerror = reject; });
+    }
+
+    const zip = new JSZip();
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const addPromises = photosWithData.map(async (scan, index) => {
+      const filename = scan.photoFilename || `bnsVision_${scan.storeName || `scan_${index + 1}`}_photo.jpg`;
+      let blob = null;
+      if (scan.photoId) {
+        blob = await getPhotoBlob(scan.photoId);
+      }
+      if (!blob && scan.photoData && scan.photoData.startsWith('data:image/')) {
+        const res = await fetch(scan.photoData);
+        blob = await res.blob();
+      }
+      if (blob) {
+        const arrayBuffer = await blob.arrayBuffer();
+        zip.file(filename, arrayBuffer);
+      }
+    });
+    await Promise.all(addPromises);
+
+    exportAllBtn.textContent = '📦 Creating ZIP...';
+    const zipBlob = await zip.generateAsync({type: 'blob'});
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const zipName = `bnsVision_all_photos_${timestamp}.zip`;
+
+    if (navigator.share && navigator.canShare) {
+      try {
+        const file = new File([zipBlob], zipName, { type: 'application/zip' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ title: 'bnsVision Photos', files: [file] });
+          showPhotoSavedNotification(`📤 Shared ${photosWithData.length} photos`, false);
+          exportAllBtn.textContent = originalText;
+          exportAllBtn.disabled = false;
+          return;
+        }
+      } catch (shareErr) {
+        if (shareErr && shareErr.name === 'AbortError') { exportAllBtn.textContent = originalText; exportAllBtn.disabled = false; return; }
+      }
+    }
+
+    const zipUrl = URL.createObjectURL(zipBlob);
+    if (isIOS) {
+      window.open(zipUrl, '_blank');
+      showPhotoSavedNotification('📦 Tap Share → Save to Files', false);
+    } else {
+      const link = document.createElement('a');
+      link.href = zipUrl;
+      link.download = zipName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showPhotoSavedNotification(`Downloaded ${photosWithData.length} photos`, false);
+    }
+    setTimeout(() => URL.revokeObjectURL(zipUrl), 2000);
+    exportAllBtn.textContent = originalText;
+    exportAllBtn.disabled = false;
+  } catch (error) {
+    console.error('Combined export failed:', error);
+    showPhotoSavedNotification('Failed to create photo archive. Try again.', true);
+    const exportAllBtn = document.getElementById('exportAllBtn');
+    exportAllBtn.textContent = 'Export All (CSV + Photos)';
+    exportAllBtn.disabled = false;
+  }
+});
+
 // --- Manual store location search ---
 const storeSearchInput = document.getElementById('storeSearchInput');
 const searchLocationBtn = document.getElementById('searchLocationBtn');
