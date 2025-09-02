@@ -1156,6 +1156,9 @@ let currentZoom = defaultZoom;
 let minZoom = 0.5; // allow zooming out to 0.5x (fallback CSS)
 let maxZoom = 5.0;
 let zoomStep = 0.2;
+// Hysteresis to avoid rapid lens switching around threshold
+const lensSwitchLow = 0.55;  // switch to ultra only below this
+const lensSwitchHigh = 0.65; // switch to wide only above this
 let useTrackZoom = false; // prefer hardware zoom when supported
 let trackCapabilities = null;
 
@@ -1321,22 +1324,28 @@ function updateZoomLevel(newZoom) {
   // Prefer hardware zoom when supported
   const stream = window.currentCameraStream;
   const track = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
-  if (useTrackZoom && track && track.applyConstraints) {
-    track.applyConstraints({ advanced: [{ zoom: currentZoom }] }).catch(()=>{});
-    // Keep CSS scale at 1 when hardware zoom is active
-    video.style.transform = 'scale(1)';
-  } else {
-    // Device-based lens switch heuristics remain (for FOV changes)
-    if (currentZoom <= 0.6 && currentCameraType !== 'ultra' && cameraDevices.ultra) {
-      switchToCamera('ultra');
-      currentZoom = 0.5;
-    } else if (currentZoom > 0.6 && currentCameraType !== 'wide' && cameraDevices.wide) {
-      switchToCamera('wide');
-      currentZoom = Math.max(1.0, currentZoom);
-    }
+  if (isZooming) {
+    // During pinch gesture: avoid hardware constraints and lens switches; use CSS only
     const cssScale = currentCameraType === 'ultra' ? Math.max(1, currentZoom / 0.5) : currentZoom;
     video.style.transform = `scale(${cssScale})`;
     video.style.transformOrigin = 'center center';
+  } else {
+    if (useTrackZoom && track && track.applyConstraints) {
+      track.applyConstraints({ advanced: [{ zoom: currentZoom }] }).catch(()=>{});
+      video.style.transform = 'scale(1)';
+    } else {
+      // Device-based lens switch with hysteresis to prevent flapping
+      if (currentZoom <= lensSwitchLow && currentCameraType !== 'ultra' && cameraDevices.ultra) {
+        switchToCamera('ultra');
+        currentZoom = 0.5;
+      } else if (currentZoom >= lensSwitchHigh && currentCameraType !== 'wide' && cameraDevices.wide) {
+        switchToCamera('wide');
+        currentZoom = Math.max(1.0, currentZoom);
+      }
+      const cssScale = currentCameraType === 'ultra' ? Math.max(1, currentZoom / 0.5) : currentZoom;
+      video.style.transform = `scale(${cssScale})`;
+      video.style.transformOrigin = 'center center';
+    }
   }
   
   // Update zoom level display
@@ -1415,6 +1424,8 @@ video.addEventListener('touchend', (e) => {
   if (e.touches.length < 2) {
     isZooming = false;
     initialDistance = 0;
+    // Commit hardware zoom / lens switch after pinch ends
+    updateZoomLevel(currentZoom);
   }
 }, { passive: false });
 
