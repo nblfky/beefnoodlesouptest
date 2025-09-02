@@ -230,6 +230,17 @@ try {
   scans = JSON.parse(localStorage.getItem('scans') || '[]');
 } catch (_) { scans = []; }
 
+// Ensure newest-first ordering by timestamp
+function sortScansNewestFirst() {
+  try {
+    scans.sort((a, b) => {
+      const at = Date.parse((a && a.timestamp) ? a.timestamp : 0);
+      const bt = Date.parse((b && b.timestamp) ? b.timestamp : 0);
+      return bt - at;
+    });
+  } catch (_) {}
+}
+
 // Migrate existing data to new structure
 if (scans.length > 0) {
   migrateScansData();
@@ -292,6 +303,9 @@ async function migrateExistingPhotosToIndexedDB() {
 
 // Kick off migration shortly after load
 setTimeout(() => { migrateExistingPhotosToIndexedDB(); }, 500);
+
+// Sort once on load so newest entries appear first
+sortScansNewestFirst();
 
 renderTable();
 
@@ -989,79 +1003,33 @@ function getCurrentLocation(initial = false) {
 //    without having to worry about the exact schema version.
 // 3. Falls back to the `ADDRESS` field when it is already formatted.
 async function reverseGeocode(lat, lng) {
-  // Switch to OpenStreetMap Nominatim exclusively
-  const osm = await reverseGeocodeOSM(lat, lng);
-  return osm && osm.formatted ? osm.formatted : '';
-}
-
-// --- OpenStreetMap Nominatim reverse geocode (fallback + components) ---
-// Returns { formatted, houseNo, street, building, postcode }
-async function reverseGeocodeOSM(lat, lng) {
   try {
-    const base = 'https://nominatim.openstreetmap.org/reverse';
-    const url = `${base}?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&addressdetails=1`;
-    const res = await fetchWithTimeout(url, { timeoutMs: REVERSE_TIMEOUT_MS, headers: { 'Accept': 'application/json' } });
+    // Newer API version expects separate lat & lon query params (see https://docs.onemap.sg/#revgeocode)
+    const url = `https://developers.onemap.sg/commonapi/revgeocode?lat=${lat}&lon=${lng}&returnGeom=N&getAddrDetails=Y`;
+    const res = await fetchWithTimeout(url, { timeoutMs: REVERSE_TIMEOUT_MS });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const addr = data.address || {};
-    const formatted = (data.display_name || '').trim();
-    const houseNo = addr.house_number || addr.house_name || addr.block || '';
-    const street = addr.road || addr.residential || addr.pedestrian || addr.footway || addr.street || addr.path || '';
-    const buildingName = addr.building || addr.amenity || addr.shop || addr.office || addr.tourism || addr.leisure || addr.public_building || addr.hospital || addr.university || addr.school || data.name || '';
-    const postcode = addr.postcode || addr['postal_code'] || '';
-    return {
-      formatted,
-      houseNo: (houseNo || '').trim() || 'Not Found',
-      street: (street || '').trim() || 'Not Found',
-      building: (buildingName || '').trim() || 'Not Found',
-      postcode: postcode || 'Not Found'
-    };
+
+    // Handle both possible response shapes
+    const result = (data.GeocodeInfo || data.results || data.ReverseGeocodeInfo)?.[0];
+    if (!result) return '';
+
+    // Normalise keys so we can treat both schemas uniformly
+    const blk   = result.BLOCK      || result.BLK_NO      || result.block      || result.blk_no;
+    const road  = result.ROAD       || result.ROAD_NAME   || result.road       || result.road_name;
+    const bldg  = result.BUILDING   || result.BUILDINGNAME|| result.building   || result.buildingname;
+    const postal= result.POSTAL     || result.POSTALCODE  || result.postal     || result.postalcode;
+    const addr  = result.ADDRESS    || result.address;
+
+    // Prefer a pre-formatted ADDRESS string if provided
+    if (addr) return addr.trim();
+
+    // Otherwise stitch together what we have
+    const parts = [blk, road, bldg, 'SINGAPORE', postal].filter(Boolean);
+    return parts.join(' ').trim();
   } catch (err) {
-    console.warn('OSM reverse geocode failed', err);
-    return null;
-  }
-}
-
-// --- OpenStreetMap Nominatim search by name (fallback when OneMap search fails) ---
-// Returns { lat, lng, address, components }
-async function searchStoreLocationOSM(storeName, currentLat = null, currentLng = null) {
-  try {
-    if (!storeName) return null;
-    const q = encodeURIComponent(storeName);
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${q}`;
-    const res = await fetchWithTimeout(url, { timeoutMs: SEARCH_TIMEOUT_MS, headers: { 'Accept': 'application/json' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const results = await res.json();
-    if (!Array.isArray(results) || results.length === 0) return null;
-
-    // Pick best result by proximity if we have current location
-    let best = results[0];
-    if (currentLat && currentLng) {
-      let bestDist = Infinity;
-      for (const r of results) {
-        if (!r.lat || !r.lon) continue;
-        const d = calculateDistance(parseFloat(currentLat), parseFloat(currentLng), parseFloat(r.lat), parseFloat(r.lon));
-        if (d < bestDist) { bestDist = d; best = r; }
-      }
-    }
-
-    const addressObj = best.address || {};
-    const addrFormatted = (best.display_name || '').trim();
-    const buildingName = addressObj.building || addressObj.amenity || addressObj.shop || addressObj.office || addressObj.tourism || addressObj.leisure || addressObj.hospital || best.name || '';
-    return {
-      lat: parseFloat(best.lat).toFixed(6),
-      lng: parseFloat(best.lon).toFixed(6),
-      address: addrFormatted,
-      components: {
-        houseNo: addressObj.house_number || addressObj.house_name || addressObj.block || 'Not Found',
-        street: addressObj.road || addressObj.residential || addressObj.pedestrian || addressObj.footway || addressObj.street || addressObj.path || 'Not Found',
-        building: buildingName || 'Not Found',
-        postcode: addressObj.postcode || addressObj['postal_code'] || 'Not Found'
-      }
-    };
-  } catch (err) {
-    console.warn('OSM name search failed', err);
-    return null;
+    console.warn('Reverse geocode failed', err);
+    return '';
   }
 }
 
@@ -1069,8 +1037,121 @@ async function searchStoreLocationOSM(storeName, currentLat = null, currentLng =
 // Search for places by name using OneMap's search API
 // Returns the best matching location with coordinates and address
 async function searchStoreLocation(storeName, currentLat = null, currentLng = null) {
-  // Use OSM exclusively
-  return await searchStoreLocationOSM(storeName, currentLat, currentLng);
+  if (!storeName || storeName === 'Not Found' || storeName === 'Unknown') {
+    return null;
+  }
+
+  try {
+    // Clean up store name for search
+    const cleanStoreName = storeName.replace(/[^\w\s]/g, ' ').trim();
+    if (!cleanStoreName) return null;
+
+    // Use OneMap search API (public endpoint - no key required)
+    const url = `https://developers.onemap.sg/commonapi/search?searchVal=${encodeURIComponent(cleanStoreName)}&returnGeom=Y&getAddrDetails=Y`;
+    const headers = {};
+    
+    // If OneMap API key is available, could use authenticated endpoints for better performance
+    // (Currently using free public endpoints which work fine)
+    if (oneMapApiKey) {
+      console.log('OneMap API key available for future authenticated endpoints');
+    }
+    
+    const res = await fetchWithTimeout(url, { headers, timeoutMs: SEARCH_TIMEOUT_MS });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    // Check if we have results
+    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
+      console.log(`No search results found for: ${storeName}`);
+      return null;
+    }
+
+    let bestMatch = data.results[0]; // Default to first result
+
+    // If we have current location, find the closest match
+    if (currentLat && currentLng && data.results.length > 1) {
+      let closestDistance = Infinity;
+      
+      for (const result of data.results) {
+        if (result.LATITUDE && result.LONGITUDE) {
+          const distance = calculateDistance(
+            parseFloat(currentLat),
+            parseFloat(currentLng),
+            parseFloat(result.LATITUDE),
+            parseFloat(result.LONGITUDE)
+          );
+          
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            bestMatch = result;
+          }
+        }
+      }
+    }
+
+    // Debug: Log the raw response to understand the structure
+    console.log('OneMap search response for', storeName, ':', bestMatch);
+
+    // Extract coordinates and address from the best match
+    const lat = bestMatch.LATITUDE || bestMatch.lat;
+    const lng = bestMatch.LONGITUDE || bestMatch.lng;
+    
+    // Try multiple ways to extract address
+    let address = '';
+    
+    // Method 1: Check for pre-formatted address
+    if (bestMatch.ADDRESS) {
+      address = bestMatch.ADDRESS.trim();
+    } else if (bestMatch.address) {
+      address = bestMatch.address.trim();
+    }
+    
+    // Method 2: Build address from components (more reliable)
+    if (!address) {
+      const addressParts = [
+        bestMatch.BLK_NO || bestMatch.BLOCK,
+        bestMatch.ROAD_NAME || bestMatch.ROAD,
+        bestMatch.BUILDING || bestMatch.BUILDINGNAME,
+        bestMatch.POSTAL || bestMatch.POSTALCODE
+      ].filter(Boolean);
+      
+      if (addressParts.length) {
+        address = addressParts.join(' ') + ', SINGAPORE';
+      }
+    }
+    
+    // Method 3: Use the search value as fallback with "Singapore" appended
+    if (!address && bestMatch.SEARCHVAL) {
+      address = bestMatch.SEARCHVAL + ', SINGAPORE';
+    }
+
+    if (!lat || !lng) {
+      console.warn('No coordinates found in search result for', storeName);
+      return null;
+    }
+
+    // Method 4: If still no address, try reverse geocoding the found coordinates
+    if (!address || address === 'Address not found') {
+      console.log(`No address from search, trying reverse geocoding for coordinates: ${lat}, ${lng}`);
+      const reverseGeocodedAddress = await reverseGeocode(lat, lng);
+      if (reverseGeocodedAddress) {
+        address = reverseGeocodedAddress;
+        console.log(`Got address from reverse geocoding: "${address}"`);
+      }
+    }
+
+    console.log(`Final extracted address for ${storeName}: "${address}"`);
+
+    return {
+      lat: parseFloat(lat).toFixed(6),
+      lng: parseFloat(lng).toFixed(6),
+      address: address || 'Address not found'
+    };
+
+  } catch (err) {
+    console.warn(`OneMap search failed for "${storeName}":`, err);
+    return null;
+  }
 }
 
 // Helper function to calculate distance between two coordinates (Haversine formula)
@@ -1548,18 +1629,6 @@ async function performScanFromCanvas(canvas) {
     statusDiv.textContent = 'Finding store location…';
     try {
       storeLocation = await searchStoreLocation(parsed.storeName, geo.lat, geo.lng);
-      if (!storeLocation) {
-        // Fallback to OSM name search
-        const osmRes = await searchStoreLocationOSM(parsed.storeName, geo.lat, geo.lng);
-        if (osmRes) {
-          storeLocation = { lat: osmRes.lat, lng: osmRes.lng, address: osmRes.address };
-          // Fill address parts if we found them
-          parsed.houseNo = osmRes.components.houseNo;
-          parsed.street = osmRes.components.street;
-          parsed.building = osmRes.components.building;
-          parsed.postcode = osmRes.components.postcode;
-        }
-      }
     } catch (_) { storeLocation = null; }
   }
 
@@ -1569,40 +1638,19 @@ async function performScanFromCanvas(canvas) {
     finalLat = storeLocation.lat;
     finalLng = storeLocation.lng;
     address = storeLocation.address;
-    // Propagate components from OSM name search if present
-    if (storeLocation.components) {
-      parsed.houseNo = storeLocation.components.houseNo || parsed.houseNo;
-      parsed.street = storeLocation.components.street || parsed.street;
-      parsed.building = storeLocation.components.building || parsed.building;
-      parsed.postcode = storeLocation.components.postcode || parsed.postcode;
-    }
     console.log(`Found store location: ${parsed.storeName} at ${finalLat}, ${finalLng}`);
   } else {
     // Fallback to device location and reverse geocode
     finalLat = geo.lat || 'Not Found';
     finalLng = geo.lng || 'Not Found';
     if (geo.lat && geo.lng) {
-      const osm = await reverseGeocodeOSM(geo.lat, geo.lng);
-      if (osm) {
-        address = osm.formatted;
-        parsed.houseNo = osm.houseNo;
-        parsed.street = osm.street;
-        parsed.building = osm.building;
-        parsed.postcode = osm.postcode;
-      }
+      try { address = await reverseGeocode(geo.lat, geo.lng); } catch (_) { address = ''; }
     }
     
     if (!address) {
       address = parsed.address || 'Not Found';
     }
   }
-
-  // Ensure parsed has address component fields initialized
-  parsed = parsed || {};
-  parsed.houseNo = parsed.houseNo || 'Not Found';
-  parsed.street = parsed.street || 'Not Found';
-  parsed.building = parsed.building || 'Not Found';
-  parsed.postcode = parsed.postcode || 'Not Found';
 
   // Store photo data with the scan
   const timestamp = new Date().toISOString();
@@ -1637,7 +1685,10 @@ async function performScanFromCanvas(canvas) {
     return; // Don't add duplicate
   }
 
-  scans.push(info);
+  // Insert newest scan at the top
+  scans.unshift(info);
+  // Keep array sorted by newest-first as a safety net
+  sortScansNewestFirst();
   saveScans();
   renderTable();
   
