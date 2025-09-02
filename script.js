@@ -225,7 +225,7 @@ function showScanComplete() {
   }
 } // OneMap API key for authenticated endpoints
 openaiApiKey = localStorage.getItem('openaiApiKey') || '';
-oneMapApiKey = localStorage.getItem('oneMapApiKey') || '';
+// oneMapApiKey removed – switching to Nominatim for reverse geocoding
 try {
   scans = JSON.parse(localStorage.getItem('scans') || '[]');
 } catch (_) { scans = []; }
@@ -990,169 +990,37 @@ function getCurrentLocation(initial = false) {
   });
 }
 
-// --- OneMap (Singapore) reverse-geocoding helper ---
-// Note: OneMap's JSON schema has changed over time. Newer responses
-// use a `results` array with camel-/snake-case keys (e.g. `BLK_NO`,
-// `ROAD_NAME`, `POSTAL`). The original version of this file only
-// handled the older `GeocodeInfo` shape, which is why it silently
-// returned "" and the UI showed "Not Found".
-//
-// This implementation now:
-// 1. Accepts either `GeocodeInfo` or `results`.
-// 2. Normalises the field names so we can build a readable address
-//    without having to worry about the exact schema version.
-// 3. Falls back to the `ADDRESS` field when it is already formatted.
+// --- Reverse geocoding via OpenStreetMap Nominatim (Singapore) ---
+// Converts lat/lon to structured address parts using Nominatim and returns
+// an object with { address, houseNo, street, building, postcode }.
 async function reverseGeocode(lat, lng) {
   try {
-    // Newer API version expects separate lat & lon query params (see https://docs.onemap.sg/#revgeocode)
-    const url = `https://developers.onemap.sg/commonapi/revgeocode?lat=${lat}&lon=${lng}&returnGeom=N&getAddrDetails=Y`;
-    const res = await fetchWithTimeout(url, { timeoutMs: REVERSE_TIMEOUT_MS });
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&addressdetails=1&namedetails=1&zoom=18`;
+    const headers = { 'Accept': 'application/json' };
+    const res = await fetchWithTimeout(url, { headers, timeoutMs: REVERSE_TIMEOUT_MS });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // Handle both possible response shapes
-    const result = (data.GeocodeInfo || data.results || data.ReverseGeocodeInfo)?.[0];
-    if (!result) return '';
+    const a = data.address || {};
+    const houseNo = a.house_number || a.block || '';
+    const street = a.road || a.pedestrian || a.footway || a.path || a.cycleway || a.street || '';
+    const postcode = a.postcode || '';
+    const building = (data.namedetails && data.namedetails.name) || data.name || a.building || '';
 
-    // Normalise keys so we can treat both schemas uniformly
-    const blk   = result.BLOCK      || result.BLK_NO      || result.block      || result.blk_no;
-    const road  = result.ROAD       || result.ROAD_NAME   || result.road       || result.road_name;
-    const bldg  = result.BUILDING   || result.BUILDINGNAME|| result.building   || result.buildingname;
-    const postal= result.POSTAL     || result.POSTALCODE  || result.postal     || result.postalcode;
-    const addr  = result.ADDRESS    || result.address;
+    const parts = [houseNo, street, building, 'SINGAPORE', postcode].filter(Boolean);
+    const fullAddress = data.display_name || parts.join(' ').trim();
 
-    // Prefer a pre-formatted ADDRESS string if provided
-    if (addr) return addr.trim();
-
-    // Otherwise stitch together what we have
-    const parts = [blk, road, bldg, 'SINGAPORE', postal].filter(Boolean);
-    return parts.join(' ').trim();
+    return { address: fullAddress, houseNo, street, building, postcode };
   } catch (err) {
-    console.warn('Reverse geocode failed', err);
-    return '';
+    console.warn('Reverse geocode (Nominatim) failed', err);
+    return { address: '', houseNo: '', street: '', building: '', postcode: '' };
   }
 }
 
 // --- OneMap Search API for finding store locations ---
 // Search for places by name using OneMap's search API
-// Returns the best matching location with coordinates and address
-async function searchStoreLocation(storeName, currentLat = null, currentLng = null) {
-  if (!storeName || storeName === 'Not Found' || storeName === 'Unknown') {
-    return null;
-  }
-
-  try {
-    // Clean up store name for search
-    const cleanStoreName = storeName.replace(/[^\w\s]/g, ' ').trim();
-    if (!cleanStoreName) return null;
-
-    // Use OneMap search API (public endpoint - no key required)
-    const url = `https://developers.onemap.sg/commonapi/search?searchVal=${encodeURIComponent(cleanStoreName)}&returnGeom=Y&getAddrDetails=Y`;
-    const headers = {};
-    
-    // If OneMap API key is available, could use authenticated endpoints for better performance
-    // (Currently using free public endpoints which work fine)
-    if (oneMapApiKey) {
-      console.log('OneMap API key available for future authenticated endpoints');
-    }
-    
-    const res = await fetchWithTimeout(url, { headers, timeoutMs: SEARCH_TIMEOUT_MS });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    // Check if we have results
-    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
-      console.log(`No search results found for: ${storeName}`);
-      return null;
-    }
-
-    let bestMatch = data.results[0]; // Default to first result
-
-    // If we have current location, find the closest match
-    if (currentLat && currentLng && data.results.length > 1) {
-      let closestDistance = Infinity;
-      
-      for (const result of data.results) {
-        if (result.LATITUDE && result.LONGITUDE) {
-          const distance = calculateDistance(
-            parseFloat(currentLat),
-            parseFloat(currentLng),
-            parseFloat(result.LATITUDE),
-            parseFloat(result.LONGITUDE)
-          );
-          
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            bestMatch = result;
-          }
-        }
-      }
-    }
-
-    // Debug: Log the raw response to understand the structure
-    console.log('OneMap search response for', storeName, ':', bestMatch);
-
-    // Extract coordinates and address from the best match
-    const lat = bestMatch.LATITUDE || bestMatch.lat;
-    const lng = bestMatch.LONGITUDE || bestMatch.lng;
-    
-    // Try multiple ways to extract address
-    let address = '';
-    
-    // Method 1: Check for pre-formatted address
-    if (bestMatch.ADDRESS) {
-      address = bestMatch.ADDRESS.trim();
-    } else if (bestMatch.address) {
-      address = bestMatch.address.trim();
-    }
-    
-    // Method 2: Build address from components (more reliable)
-    if (!address) {
-      const addressParts = [
-        bestMatch.BLK_NO || bestMatch.BLOCK,
-        bestMatch.ROAD_NAME || bestMatch.ROAD,
-        bestMatch.BUILDING || bestMatch.BUILDINGNAME,
-        bestMatch.POSTAL || bestMatch.POSTALCODE
-      ].filter(Boolean);
-      
-      if (addressParts.length) {
-        address = addressParts.join(' ') + ', SINGAPORE';
-      }
-    }
-    
-    // Method 3: Use the search value as fallback with "Singapore" appended
-    if (!address && bestMatch.SEARCHVAL) {
-      address = bestMatch.SEARCHVAL + ', SINGAPORE';
-    }
-
-    if (!lat || !lng) {
-      console.warn('No coordinates found in search result for', storeName);
-      return null;
-    }
-
-    // Method 4: If still no address, try reverse geocoding the found coordinates
-    if (!address || address === 'Address not found') {
-      console.log(`No address from search, trying reverse geocoding for coordinates: ${lat}, ${lng}`);
-      const reverseGeocodedAddress = await reverseGeocode(lat, lng);
-      if (reverseGeocodedAddress) {
-        address = reverseGeocodedAddress;
-        console.log(`Got address from reverse geocoding: "${address}"`);
-      }
-    }
-
-    console.log(`Final extracted address for ${storeName}: "${address}"`);
-
-    return {
-      lat: parseFloat(lat).toFixed(6),
-      lng: parseFloat(lng).toFixed(6),
-      address: address || 'Address not found'
-    };
-
-  } catch (err) {
-    console.warn(`OneMap search failed for "${storeName}":`, err);
-    return null;
-  }
-}
+// OneMap search removed. Keeping a stub to avoid breaking references.
+async function searchStoreLocation() { return null; }
 
 // Helper function to calculate distance between two coordinates (Haversine formula)
 function calculateDistance(lat1, lng1, lat2, lng2) {
@@ -1191,14 +1059,7 @@ function setOpenAIApiKey(key) {
   }
 }
 
-function setOneMapApiKey(key) {
-  oneMapApiKey = key;
-  if (key) {
-    localStorage.setItem('oneMapApiKey', key);
-  } else {
-    localStorage.removeItem('oneMapApiKey');
-  }
-}
+// OneMap API key handling removed
 
 async function extractInfoGPT(rawText) {
   if (!openaiApiKey) return null;
@@ -1239,18 +1100,7 @@ if (!openaiApiKey) {
   }, 500);
 }
 
-// OneMap API key is optional - the app works fine with public endpoints
-// Uncomment below if you want to be prompted for OneMap API key
-/*
-if (!oneMapApiKey) {
-  setTimeout(() => {
-    if (confirm('Enter your OneMap API key for authenticated endpoints?\n(Optional - app works fine without it)')) {
-      const key = prompt('OneMap API token');
-      if (key) setOneMapApiKey(key.trim());
-    }
-  }, 1000);
-}
-*/
+// OneMap API prompt removed
 
 function correctStoreName(name) {
   if (!name || !englishWords.length || typeof didYouMean !== 'function') return name;
@@ -1622,34 +1472,16 @@ async function performScanFromCanvas(canvas) {
     parsed.category = await mapToCompanyCategory(parsed.category);
   }
 
-  // Try to search for the store location using OneMap API
-  let storeLocation = null;
-  if (parsed && parsed.storeName && parsed.storeName !== 'Not Found') {
-    showScanningOverlay('Finding location...');
-    statusDiv.textContent = 'Finding store location…';
+  // Reverse geocode based on current device location (Singapore)
+  let finalLat, finalLng, addressParts;
+  finalLat = geo.lat || 'Not Found';
+  finalLng = geo.lng || 'Not Found';
+  if (geo.lat && geo.lng) {
     try {
-      storeLocation = await searchStoreLocation(parsed.storeName, geo.lat, geo.lng);
-    } catch (_) { storeLocation = null; }
-  }
-
-  // Use store location if found, otherwise fallback to current device location
-  let finalLat, finalLng, address;
-  if (storeLocation) {
-    finalLat = storeLocation.lat;
-    finalLng = storeLocation.lng;
-    address = storeLocation.address;
-    console.log(`Found store location: ${parsed.storeName} at ${finalLat}, ${finalLng}`);
+      addressParts = await reverseGeocode(geo.lat, geo.lng);
+    } catch (_) { addressParts = { address: '', houseNo: '', street: '', building: '', postcode: '' }; }
   } else {
-    // Fallback to device location and reverse geocode
-    finalLat = geo.lat || 'Not Found';
-    finalLng = geo.lng || 'Not Found';
-    if (geo.lat && geo.lng) {
-      try { address = await reverseGeocode(geo.lat, geo.lng); } catch (_) { address = ''; }
-    }
-    
-    if (!address) {
-      address = parsed.address || 'Not Found';
-    }
+    addressParts = { address: parsed?.address || 'Not Found', houseNo: '', street: '', building: '', postcode: '' };
   }
 
   // Store photo data with the scan
@@ -1667,7 +1499,11 @@ async function performScanFromCanvas(canvas) {
     { 
       lat: finalLat, 
       lng: finalLng, 
-      address: address,
+      address: addressParts?.address || parsed?.address || 'Not Found',
+      houseNo: addressParts?.houseNo || parsed?.houseNo || 'Not Found',
+      street: addressParts?.street || parsed?.street || 'Not Found',
+      building: addressParts?.building || parsed?.building || 'Not Found',
+      postcode: addressParts?.postcode || parsed?.postcode || 'Not Found',
       photoData: thumbDataUrl,
       timestamp: timestamp,
       photoFilename: photoFilename,
@@ -2379,85 +2215,26 @@ function initializeMaps() {
 
 // Add tile layers with multiple fallback sources
 function addTileLayersToMap(map) {
-  // Primary: OneMap Singapore (most accurate for Singapore)
-  const oneMapLayer = L.tileLayer('https://maps-{s}.onemap.sg/v3/Default/{z}/{x}/{y}.png', {
-    subdomains: ['a', 'b', 'c', 'd'],
-    attribution: '&copy; <a href="https://www.onemap.sg/">OneMap</a>',
-    maxZoom: 18,
+  // Use OpenStreetMap directly
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
     errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
   });
-
-  // Fallback 1: OpenStreetMap (reliable worldwide)
-  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 19
-  });
-
-  // Fallback 2: CartoDB (clean, reliable)
-  const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    maxZoom: 19
-  });
-
-  // Try OneMap first, fallback to OSM if it fails
-  let currentLayer = oneMapLayer;
-  currentLayer.addTo(map);
+  osmLayer.addTo(map);
 
   // Mark map as loaded when tiles load successfully
-  currentLayer.on('load', function() {
-    console.log('Map tiles loaded successfully');
+  osmLayer.on('load', function() {
     const mapContainer = map.getContainer();
     if (mapContainer) {
       mapContainer.classList.add('loaded');
     }
   });
 
-  // Handle tile load errors
-  currentLayer.on('tileerror', function(error) {
-    console.log('OneMap tiles failed, switching to OpenStreetMap');
-    map.removeLayer(currentLayer);
-    currentLayer = osmLayer;
-    currentLayer.addTo(map);
-    
-    // Mark as loaded when fallback works
-    currentLayer.on('load', function() {
-      console.log('OpenStreetMap tiles loaded successfully');
-      const mapContainer = map.getContainer();
-      if (mapContainer) {
-        mapContainer.classList.add('loaded');
-      }
-    });
-    
-    // If OSM also fails, try CartoDB
-    currentLayer.on('tileerror', function(error) {
-      console.log('OpenStreetMap tiles failed, switching to CartoDB');
-      map.removeLayer(currentLayer);
-      currentLayer = cartoLayer;
-      currentLayer.addTo(map);
-      
-      // Mark as loaded when final fallback works
-      currentLayer.on('load', function() {
-        console.log('CartoDB tiles loaded successfully');
-        const mapContainer = map.getContainer();
-        if (mapContainer) {
-          mapContainer.classList.add('loaded');
-        }
-      });
-    });
-  });
-
-  // Force map to refresh and invalidate size multiple times
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 100);
-  
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 500);
-  
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 1000);
+  // Force map to refresh and invalidate size
+  setTimeout(() => { map.invalidateSize(); }, 100);
+  setTimeout(() => { map.invalidateSize(); }, 500);
+  setTimeout(() => { map.invalidateSize(); }, 1000);
 }
 
 // Update user location on both maps with smooth tracking
