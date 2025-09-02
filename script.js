@@ -2704,35 +2704,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.error('Map close button or overlay not found:', { mapCloseBtn, fullMapOverlay });
   }
 
-  // Photo capture toggle functionality
-  const photoCaptureToggle = document.getElementById('photoCaptureToggle');
-  if (photoCaptureToggle) {
-    // Initialize toggle state
-    const updateToggleButton = () => {
-      const isEnabled = localStorage.getItem('photoCaptureEnabled') !== 'false';
-      photoCaptureToggle.textContent = isEnabled ? '📸 Photo: ON' : '📸 Photo: OFF';
-      photoCaptureToggle.classList.toggle('disabled', !isEnabled);
-      photoCaptureToggle.title = isEnabled ? 'Click to disable photo capture' : 'Click to enable photo capture';
-    };
-    
-    // Set initial state
-    updateToggleButton();
-    
-    // Toggle functionality
-    photoCaptureToggle.addEventListener('click', () => {
-      const currentState = localStorage.getItem('photoCaptureEnabled') !== 'false';
-      const newState = !currentState;
-      
-      localStorage.setItem('photoCaptureEnabled', newState.toString());
-      updateToggleButton();
-      
-      // Show feedback
-      const message = newState ? '📸 Photo capture enabled' : '📸 Photo capture disabled';
-      showPhotoSavedNotification(message);
-      
-      console.log(`Photo capture ${newState ? 'enabled' : 'disabled'}`);
-    });
-  }
+  // Photo capture toggle removed
 
   // Add backup close methods
   if (fullMapOverlay) {
