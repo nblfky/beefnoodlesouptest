@@ -115,6 +115,25 @@ function scheduleSaveScans() {
   });
 }
 
+// Sanitize helpers: convert placeholders like "Not Found"/"Unknown" to blanks
+function sanitizeString(value) {
+  const v = (value == null ? '' : String(value)).trim();
+  if (!v) return '';
+  const lower = v.toLowerCase();
+  if (lower === 'not found' || lower === 'unknown' || lower === 'n/a') return '';
+  return v;
+}
+
+function sanitizeObjectStrings(obj) {
+  const out = { ...obj };
+  for (const key in out) {
+    if (typeof out[key] === 'string') {
+      out[key] = sanitizeString(out[key]);
+    }
+  }
+  return out;
+}
+
 function openPhotoDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(PHOTO_DB_NAME, 1);
@@ -1609,7 +1628,7 @@ async function performScanFromCanvas(canvas) {
   }
   const thumbDataUrl = createThumbnailDataURL(canvas, 400, 400, 0.6);
 
-  const info = Object.assign(
+  const info = sanitizeObjectStrings(Object.assign(
     { 
       lat: finalLat, 
       lng: finalLng, 
@@ -1624,7 +1643,7 @@ async function performScanFromCanvas(canvas) {
       photoId: photoId
     },
     parsed
-  );
+  ));
 
   // Check for duplicates before adding
   if (isDuplicateStore(info)) {
