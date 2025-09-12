@@ -45,7 +45,7 @@ async function extractInfoVision(imageUrl) {
         {
           role: 'user',
           content:
-            'Extract JSON with keys: storeName, unitNumber, address, category. Text may be in any language. Preserve the original script, casing, and spacing for storeName and address exactly as written in the image. If storeName or address are not in English, also include storeNameEnglish and addressEnglish as best-effort translations to English. Include language as a two-letter ISO 639-1 code for the detected primary language. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" for any field you cannot determine. Output only a single JSON object with no additional text.'
+            'Extract JSON with keys: storeName, unitNumber, address, category. Text may be in any language. Preserve the original script, casing, and spacing for storeName and address exactly as written in the image. If both non-English and English names are present on the sign, set storeName to the exact non-English/native-script name as written (do not transliterate), and set storeNameEnglish to the exact English text from the sign. Only if no English appears, set storeNameEnglish to a best-effort translation. Include language as a two-letter ISO 639-1 code for the detected primary language. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" for any field you cannot determine. Output only a single JSON object with no additional text.'
         },
         {
           role: 'user',
@@ -387,7 +387,12 @@ function renderTable() {
     const rowHTML = `
       <td>${idx + 1}</td>
       <td>${photoCell}</td>
-      <td>${scan.storeName}</td>
+      <td>
+        <div class="poi-name">
+          <div class="primary-name">${scan.storeName || ''}</div>
+          ${scan.storeNameEnglish && scan.storeNameEnglish !== scan.storeName ? `<div class="secondary-name">${scan.storeNameEnglish}</div>` : ''}
+        </div>
+      </td>
       <td>${latLong}</td>
       <td>${houseNo}</td>
       <td>${street}</td>
