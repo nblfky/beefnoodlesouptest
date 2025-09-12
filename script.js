@@ -61,6 +61,31 @@ async function extractInfoVision(imageUrl) {
     return null;
   }
 }
+
+// --- Website lookup via Google Custom Search (optional) ---
+// Requires two values stored in localStorage if used:
+// - googleCseCx: Custom Search Engine CX
+// - googleApiKey: Google API key
+async function findOfficialWebsite(storeName, localityHint = '') {
+  try {
+    const cx = localStorage.getItem('googleCseCx');
+    const key = localStorage.getItem('googleApiKey');
+    if (!cx || !key || !storeName) return null;
+    const q = encodeURIComponent(`${storeName} official site ${localityHint || ''}`.trim());
+    const url = `https://www.googleapis.com/customsearch/v1?q=${q}&cx=${cx}&key=${key}`;
+    const res = await fetchWithTimeout(url, { timeoutMs: 5000 });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) return null;
+    // Heuristics: prefer first item that looks like brand domain
+    const official = items.find(it => it.displayLink && !/facebook|instagram|tripadvisor|yelp|tiktok|grab|shopee|lazada|carousell|directory|map|google\./i.test(it.displayLink));
+    const candidate = official || items[0];
+    return candidate?.link || null;
+  } catch (_) {
+    return null;
+  }
+}
 const video = document.getElementById('camera');
 const statusDiv = document.getElementById('status');
 const tableBody = document.querySelector('#resultsTable tbody');
@@ -389,8 +414,8 @@ function renderTable() {
       <td>${photoCell}</td>
       <td>
         <div class="poi-name">
-          <div class="primary-name">${scan.storeName || ''}</div>
-          ${scan.storeNameEnglish && scan.storeNameEnglish !== scan.storeName ? `<div class="secondary-name">${scan.storeNameEnglish}</div>` : ''}
+          <div class="primary-name">${(scan.storeNameEnglish || scan.storeName || '')}</div>
+          ${(scan.storeName && scan.storeNameEnglish && scan.storeNameEnglish !== scan.storeName) ? `<div class=\"secondary-name\">${scan.storeName}</div>` : ''}
         </div>
       </td>
       <td>${latLong}</td>
@@ -399,6 +424,7 @@ function renderTable() {
       <td>${scan.unitNumber}</td>
       <td>${building}</td>
       <td>${postcode}</td>
+      <td>${scan.website ? `<a href="${scan.website}" target="_blank" rel="noopener">${scan.website}</a>` : 'Not Found'}</td>
       <td>${scan.category || ''}</td>
       <td class="remarks-cell">
         <input type="text" class="remarks-input" value="${remarksValue}" 
@@ -721,20 +747,30 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     alert('No data to export');
     return;
   }
-  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Category','Remarks','Photo Available','Timestamp'];
+  const headers = ['POI Name (English)','POI Name (Native)','Lat-Long','House_No','Street','Unit','Building','Postcode','Website','Category','Remarks','Photo Available','Timestamp'];
   const csvRows = [headers.join(',')];
   scans.forEach(s => {
     // Format Lat-Long as a single field
     const latLong = (s.lat && s.lng) ? `${s.lat}, ${s.lng}` : '';
+    // Prefer explicit dual-name export
+    const englishName = s.storeNameEnglish || (s.language === 'en' ? (s.storeName || '') : '');
+    let nativeName = '';
+    if (s.storeName && s.storeNameEnglish) {
+      nativeName = (s.storeName !== s.storeNameEnglish) ? s.storeName : '';
+    } else if (!s.storeNameEnglish && s.storeName && s.language && s.language !== 'en') {
+      nativeName = s.storeName;
+    }
     
     const row = [
-      s.storeName, 
+      englishName,
+      nativeName,
       latLong,
       s.houseNo || '', 
       s.street || '', 
       s.unitNumber, 
       s.building || '', 
       s.postcode || '', 
+      s.website || 'Not Found',
       s.category || '',
       s.remarks || '',
       s.photoData ? 'Yes' : 'No',
@@ -897,6 +933,7 @@ function performTableSearch() {
     const searchableFields = [
       scan.unitNumber,
       scan.address,
+      scan.website,
       scan.category,
       scan.remarks,
       scan.houseNo,
@@ -1667,6 +1704,25 @@ async function performScanFromCanvas(canvas) {
   sortScansNewestFirst();
   saveScans();
   renderTable();
+  
+  // Background: try to find official website without blocking UI
+  try {
+    const nameForSearch = info.storeNameEnglish || info.storeName || '';
+    const localityHint = info.street || info.building || info.address || '';
+    if (nameForSearch) {
+      findOfficialWebsite(nameForSearch, localityHint).then(url => {
+        if (url) {
+          // Item was unshifted at index 0
+          const target = scans.find(s => (s.timestamp === info.timestamp && s.photoId === info.photoId));
+          if (target) {
+            target.website = url;
+            saveScans();
+            renderTable();
+          }
+        }
+      }).catch(()=>{});
+    }
+  } catch (_) {}
   
   // Show completion message
   showScanComplete();

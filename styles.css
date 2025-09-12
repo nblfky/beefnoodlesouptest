@@ -358,7 +358,7 @@
       overflow: hidden;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       table-layout: fixed; /* Fixed layout for consistent column sizing */
-      min-width: 1060px; /* Accommodate all columns including category, remarks and actions */
+      min-width: 1180px; /* Accommodate all columns including website, category, remarks and actions */
     }
     
     th, td { 
@@ -372,8 +372,8 @@
       vertical-align: top; /* Align content to top when wrapping */
     }
 
-    .poi-name .primary-name { font-weight: 600; }
-    .poi-name .secondary-name { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
+    .poi-name .primary-name { font-weight: 700; }
+    .poi-name .secondary-name { font-style: italic; font-size: 12px; margin-top: 2px; }
 
     /* Fixed column widths to prevent overlapping */
     th:nth-child(1), td:nth-child(1) { width: 40px; }   /* # */
@@ -385,9 +385,10 @@
     th:nth-child(7), td:nth-child(7) { width: 60px; }   /* Unit */
     th:nth-child(8), td:nth-child(8) { width: 100px; }  /* Building */
     th:nth-child(9), td:nth-child(9) { width: 80px; }   /* Postcode */
-    th:nth-child(10), td:nth-child(10) { width: 120px; } /* Category */
-    th:nth-child(11), td:nth-child(11) { width: 120px; } /* Remarks */
-    th:nth-child(12), td:nth-child(12) { width: 140px; } /* Actions */
+    th:nth-child(10), td:nth-child(10) { width: 160px; } /* Website */
+    th:nth-child(11), td:nth-child(11) { width: 120px; } /* Category */
+    th:nth-child(12), td:nth-child(12) { width: 120px; } /* Remarks */
+    th:nth-child(13), td:nth-child(13) { width: 140px; } /* Actions */
     
     th { 
       background: var(--bg-secondary);
@@ -490,7 +491,7 @@
     /* Removed old swipe functionality */
 
     /* Mobile-specific fixed column widths */
-    table { min-width: 1120px; }
+    table { min-width: 1320px; }
     th:nth-child(1), td:nth-child(1) { width: 35px; }   /* # */
     th:nth-child(2), td:nth-child(2) { width: 70px; }   /* Photo */
     th:nth-child(3), td:nth-child(3) { width: 100px; }  /* POI Name */
@@ -500,9 +501,10 @@
     th:nth-child(7), td:nth-child(7) { width: 50px; }   /* Unit */
     th:nth-child(8), td:nth-child(8) { width: 80px; }   /* Building */
     th:nth-child(9), td:nth-child(9) { width: 65px; }   /* Postcode */
-    th:nth-child(10), td:nth-child(10) { width: 100px; } /* Category */
-    th:nth-child(11), td:nth-child(11) { width: 100px; } /* Remarks */
-    th:nth-child(12), td:nth-child(12) { width: 120px; } /* Actions */
+    th:nth-child(10), td:nth-child(10) { width: 140px; } /* Website */
+    th:nth-child(11), td:nth-child(11) { width: 100px; } /* Category */
+    th:nth-child(12), td:nth-child(12) { width: 100px; } /* Remarks */
+    th:nth-child(13), td:nth-child(13) { width: 120px; } /* Actions */
     }
 
     /* Extra small phones */
@@ -538,7 +540,7 @@
       }
 
     /* Extra small phone fixed column widths */
-    table { min-width: 840px; }
+    table { min-width: 980px; }
     th:nth-child(1), td:nth-child(1) { width: 30px; }   /* # */
     th:nth-child(2), td:nth-child(2) { width: 60px; }   /* Photo */
     th:nth-child(3), td:nth-child(3) { width: 80px; }   /* POI Name */
@@ -548,8 +550,9 @@
     th:nth-child(7), td:nth-child(7) { width: 40px; }   /* Unit */
     th:nth-child(8), td:nth-child(8) { width: 70px; }   /* Building */
     th:nth-child(9), td:nth-child(9) { width: 55px; }   /* Postcode */
-    th:nth-child(10), td:nth-child(10) { width: 80px; } /* Remarks */
-    th:nth-child(11), td:nth-child(11) { width: 100px; } /* Actions */
+    th:nth-child(10), td:nth-child(10) { width: 120px; } /* Website */
+    th:nth-child(11), td:nth-child(11) { width: 80px; } /* Remarks */
+    th:nth-child(12), td:nth-child(12) { width: 100px; } /* Actions */
     }
 
     /* Loading and animation improvements */
