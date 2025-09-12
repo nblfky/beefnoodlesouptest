@@ -45,7 +45,7 @@ async function extractInfoVision(imageUrl) {
         {
           role: 'user',
           content:
-            'Extract JSON with keys: storeName, unitNumber, address, category. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" if unknown.'
+            'Extract JSON with keys: storeName, unitNumber, address, category. Text may be in any language. Preserve the original script, casing, and spacing for storeName and address exactly as written in the image. If storeName or address are not in English, also include storeNameEnglish and addressEnglish as best-effort translations to English. Include language as a two-letter ISO 639-1 code for the detected primary language. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" for any field you cannot determine. Output only a single JSON object with no additional text.'
         },
         {
           role: 'user',
@@ -394,6 +394,7 @@ function renderTable() {
       <td>${scan.unitNumber}</td>
       <td>${building}</td>
       <td>${postcode}</td>
+      <td>${scan.category || ''}</td>
       <td class="remarks-cell">
         <input type="text" class="remarks-input" value="${remarksValue}" 
                placeholder="Add remarks..." data-index="${idx}">
@@ -715,7 +716,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     alert('No data to export');
     return;
   }
-  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Remarks','Photo Available','Timestamp'];
+  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Category','Remarks','Photo Available','Timestamp'];
   const csvRows = [headers.join(',')];
   scans.forEach(s => {
     // Format Lat-Long as a single field
@@ -729,6 +730,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       s.unitNumber, 
       s.building || '', 
       s.postcode || '', 
+      s.category || '',
       s.remarks || '',
       s.photoData ? 'Yes' : 'No',
       s.timestamp || 'Unknown'
