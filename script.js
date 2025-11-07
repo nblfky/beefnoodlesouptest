@@ -181,7 +181,7 @@ function ensureLocationReady() {
 }
 
 setActiveScreen(screens.home);
-setVisionView('camera');
+// Don't initialize camera view on startup - only when user navigates to it
 
 // Analyse an image with GPT-4o Vision style prompt. Accepts a question and a data-URL or remote image URL.
 async function askImageQuestion(question, imageUrl) {
