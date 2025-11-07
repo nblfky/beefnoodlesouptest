@@ -1,21 +1,165 @@
 // Initialize camera feed
-import OpenAI from 'https://esm.sh/openai?bundle';
 
-// --- OpenAI Vision setup ---
-let openaiClient = null;
-function getOpenAIClient() {
-  if (!openaiApiKey) return null;
-  if (openaiClient) return openaiClient;
-  openaiClient = new OpenAI({ apiKey: openaiApiKey, dangerouslyAllowBrowser: true });
-  return openaiClient;
+const OPENAI_PROXY_URL = (() => {
+  const value = window.OPENAI_PROXY_URL;
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  return '/.netlify/functions/openai';
+})();
+
+function hasOpenAIProxy() {
+  return typeof OPENAI_PROXY_URL === 'string' && OPENAI_PROXY_URL.length > 0;
 }
+
+async function callOpenAIProxy(endpoint, payload) {
+  if (!hasOpenAIProxy()) {
+    throw new Error('OpenAI proxy URL is not configured.');
+  }
+
+  const body = { endpoint, payload };
+  const res = await fetch(OPENAI_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let errMessage = `Proxy request failed with status ${res.status}`;
+    try {
+      const errJson = await res.json();
+      errMessage = errJson?.error ?? errMessage;
+    } catch (_) {}
+    throw new Error(errMessage);
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
+  return res.text();
+}
+
+const screens = {
+  home: document.getElementById('homeScreen'),
+  visionMenu: document.getElementById('visionMenu'),
+  visionApp: document.getElementById('visionApp')
+};
+
+const visionEntryBtn = document.getElementById('visionEntry');
+const homeBackBtn = document.getElementById('homeBackBtn');
+const visionMenuBackBtn = document.getElementById('visionMenuBackBtn');
+const visionMenuTiles = document.querySelectorAll('[data-vision-target]');
+const visionTabButtons = document.querySelectorAll('.vision-tab');
+const visionViews = document.querySelectorAll('.vision-view');
+
+let cameraInitialized = false;
+let cameraInitPromise = null;
+let locationInitialized = false;
+let locationInitPromise = null;
+
+function setActiveScreen(targetScreen) {
+  Object.values(screens).forEach(section => {
+    if (section) section.classList.remove('active');
+  });
+  if (targetScreen) {
+    targetScreen.classList.add('active');
+  }
+}
+
+function setVisionView(targetView = 'camera') {
+  const viewName = targetView || 'camera';
+  visionTabButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === viewName);
+  });
+  visionViews.forEach(section => {
+    section.classList.toggle('active', section.dataset.view === viewName);
+  });
+
+  if (viewName === 'camera') {
+    ensureCameraReady();
+  }
+
+  if (viewName === 'map') {
+    ensureLocationReady();
+  }
+
+  if (viewName === 'map') {
+    setTimeout(() => {
+      if (typeof miniMap !== 'undefined' && miniMap) {
+        miniMap.invalidateSize();
+      }
+      if (typeof fullMap !== 'undefined' && fullMap) {
+        fullMap.invalidateSize();
+      }
+    }, 180);
+  }
+}
+
+if (visionEntryBtn) {
+  visionEntryBtn.addEventListener('click', () => {
+    setActiveScreen(screens.visionMenu);
+  });
+}
+
+if (homeBackBtn) {
+  homeBackBtn.addEventListener('click', () => {
+    setActiveScreen(screens.home);
+  });
+}
+
+if (visionMenuBackBtn) {
+  visionMenuBackBtn.addEventListener('click', () => {
+    setActiveScreen(screens.visionMenu);
+    setVisionView('camera');
+  });
+}
+
+visionMenuTiles.forEach(tile => {
+  tile.addEventListener('click', () => {
+    const target = tile.dataset.visionTarget || 'camera';
+    setActiveScreen(screens.visionApp);
+    setVisionView(target);
+  });
+});
+
+visionTabButtons.forEach(tab => {
+  tab.addEventListener('click', () => {
+    setVisionView(tab.dataset.view);
+  });
+});
+
+function ensureCameraReady() {
+  if (cameraInitialized) return cameraInitPromise || Promise.resolve();
+  if (cameraInitPromise) return cameraInitPromise;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    statusDiv.textContent = 'Camera not supported on this device.';
+    return Promise.resolve();
+  }
+  cameraInitPromise = initCamera().finally(() => {
+    cameraInitPromise = null;
+  });
+  return cameraInitPromise;
+}
+
+function ensureLocationReady() {
+  if (locationInitialized) return locationInitPromise || Promise.resolve();
+  if (locationInitPromise) return locationInitPromise;
+  locationInitPromise = requestLocationPermission().finally(() => {
+    locationInitialized = true;
+    locationInitPromise = null;
+  });
+  return locationInitPromise;
+}
+
+setActiveScreen(screens.home);
+setVisionView('camera');
 
 // Analyse an image with GPT-4o Vision style prompt. Accepts a question and a data-URL or remote image URL.
 async function askImageQuestion(question, imageUrl) {
-  const client = getOpenAIClient();
-  if (!client) return null;
+  if (!hasOpenAIProxy()) return null;
   try {
-    const resp = await client.responses.create({
+    const resp = await callOpenAIProxy('/v1/responses', {
       model: 'gpt-4o',
       input: [
         { role: 'user', content: question },
@@ -27,7 +171,10 @@ async function askImageQuestion(question, imageUrl) {
         }
       ]
     });
-    return resp.output_text || '';
+    const text = resp?.output_text
+      ?? resp?.output?.map(chunk => chunk?.content?.map?.(piece => piece?.text).filter(Boolean).join(' ')).filter(Boolean).join('\n')
+      ?? '';
+    return text || null;
   } catch (err) {
     console.warn('OpenAI Vision request failed', err);
     return null;
@@ -36,16 +183,15 @@ async function askImageQuestion(question, imageUrl) {
 
 // Extract structured JSON directly from an image using GPT-4o Vision
 async function extractInfoVision(imageUrl) {
-  const client = getOpenAIClient();
-  if (!client) return null;
+  if (!hasOpenAIProxy()) return null;
   try {
-    const resp = await client.responses.create({
+    const resp = await callOpenAIProxy('/v1/responses', {
       model: 'gpt-4o',
       input: [
         {
           role: 'user',
           content:
-            'Extract JSON with keys: storeName, unitNumber, address, category. Text may be in any language. Preserve the original script, casing, and spacing for storeName and address exactly as written in the image. If both non-English and English names are present on the sign, set storeName to the exact non-English/native-script name as written (do not transliterate), and set storeNameEnglish to the exact English text from the sign. Only if no English appears, set storeNameEnglish to a best-effort translation. Include language as a two-letter ISO 639-1 code for the detected primary language. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" for any field you cannot determine. Output only a single JSON object with no additional text.'
+            'Extract JSON with keys: storeName, unitNumber, address, category. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" if unknown.'
         },
         {
           role: 'user',
@@ -53,36 +199,13 @@ async function extractInfoVision(imageUrl) {
         }
       ]
     });
-    const txt = resp.output_text || '';
+    const txt = resp?.output_text
+      ?? resp?.output?.map(chunk => chunk?.content?.map?.(piece => piece?.text).filter(Boolean).join(' ')).filter(Boolean).join('\n')
+      ?? '';
     const match = txt.match(/\{[\s\S]*\}/);
     return match ? JSON.parse(match[0]) : null;
   } catch (err) {
     console.warn('Vision JSON extraction failed', err);
-    return null;
-  }
-}
-
-// --- Website lookup via Google Custom Search (optional) ---
-// Requires two values stored in localStorage if used:
-// - googleCseCx: Custom Search Engine CX
-// - googleApiKey: Google API key
-async function findOfficialWebsite(storeName, localityHint = '') {
-  try {
-    const cx = localStorage.getItem('googleCseCx');
-    const key = localStorage.getItem('googleApiKey');
-    if (!cx || !key || !storeName) return null;
-    const q = encodeURIComponent(`${storeName} official site ${localityHint || ''}`.trim());
-    const url = `https://www.googleapis.com/customsearch/v1?q=${q}&cx=${cx}&key=${key}`;
-    const res = await fetchWithTimeout(url, { timeoutMs: 5000 });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const items = Array.isArray(data.items) ? data.items : [];
-    if (!items.length) return null;
-    // Heuristics: prefer first item that looks like brand domain
-    const official = items.find(it => it.displayLink && !/facebook|instagram|tripadvisor|yelp|tiktok|grab|shopee|lazada|carousell|directory|map|google\./i.test(it.displayLink));
-    const candidate = official || items[0];
-    return candidate?.link || null;
-  } catch (_) {
     return null;
   }
 }
@@ -231,11 +354,6 @@ function migrateScansData() {
   });
   saveScans();
 }
-// Note: openaiApiKey is defined later, but we need it before using getOpenAIClient().
-// We will forward-declare it here and assign when loaded below.
-let openaiApiKey;
-let oneMapApiKey;
-
 // --- Scanning overlay helper functions ---
 function showScanningOverlay(text = 'Scanning...') {
   if (scanningOverlay && scanningText) {
@@ -267,9 +385,8 @@ function showScanComplete() {
       }
     }, 1500);
   }
-} // OneMap API key for authenticated endpoints
-openaiApiKey = localStorage.getItem('openaiApiKey') || '';
-// oneMapApiKey removed – switching to Nominatim for reverse geocoding
+}
+// OneMap API key removed – switching to Nominatim for reverse geocoding
 try {
   scans = JSON.parse(localStorage.getItem('scans') || '[]');
 } catch (_) { scans = []; }
@@ -412,20 +529,13 @@ function renderTable() {
     const rowHTML = `
       <td>${idx + 1}</td>
       <td>${photoCell}</td>
-      <td>
-        <div class="poi-name">
-          <div class="primary-name">${(scan.storeNameEnglish || scan.storeName || '')}</div>
-          ${(scan.storeName && scan.storeNameEnglish && scan.storeNameEnglish !== scan.storeName) ? `<div class=\"secondary-name\">${scan.storeName}</div>` : ''}
-        </div>
-      </td>
+      <td>${scan.storeName}</td>
       <td>${latLong}</td>
       <td>${houseNo}</td>
       <td>${street}</td>
       <td>${scan.unitNumber}</td>
       <td>${building}</td>
       <td>${postcode}</td>
-      <td>${scan.website ? `<a href="${scan.website}" target="_blank" rel="noopener">${scan.website}</a>` : 'Not Found'}</td>
-      <td>${scan.category || ''}</td>
       <td class="remarks-cell">
         <input type="text" class="remarks-input" value="${remarksValue}" 
                placeholder="Add remarks..." data-index="${idx}">
@@ -747,31 +857,20 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     alert('No data to export');
     return;
   }
-  const headers = ['POI Name (English)','POI Name (Native)','Lat-Long','House_No','Street','Unit','Building','Postcode','Website','Category','Remarks','Photo Available','Timestamp'];
+  const headers = ['POI Name','Lat-Long','House_No','Street','Unit','Building','Postcode','Remarks','Photo Available','Timestamp'];
   const csvRows = [headers.join(',')];
   scans.forEach(s => {
     // Format Lat-Long as a single field
     const latLong = (s.lat && s.lng) ? `${s.lat}, ${s.lng}` : '';
-    // Prefer explicit dual-name export
-    const englishName = s.storeNameEnglish || (s.language === 'en' ? (s.storeName || '') : '');
-    let nativeName = '';
-    if (s.storeName && s.storeNameEnglish) {
-      nativeName = (s.storeName !== s.storeNameEnglish) ? s.storeName : '';
-    } else if (!s.storeNameEnglish && s.storeName && s.language && s.language !== 'en') {
-      nativeName = s.storeName;
-    }
     
     const row = [
-      englishName,
-      nativeName,
+      s.storeName, 
       latLong,
       s.houseNo || '', 
       s.street || '', 
       s.unitNumber, 
       s.building || '', 
       s.postcode || '', 
-      s.website || 'Not Found',
-      s.category || '',
       s.remarks || '',
       s.photoData ? 'Yes' : 'No',
       s.timestamp || 'Unknown'
@@ -933,7 +1032,6 @@ function performTableSearch() {
     const searchableFields = [
       scan.unitNumber,
       scan.address,
-      scan.website,
       scan.category,
       scan.remarks,
       scan.houseNo,
@@ -1030,10 +1128,8 @@ async function initLocation() {
   } else {
     statusDiv.textContent = '';
   }
+  locationInitialized = true;
 }
-
-// call immediately
-initLocation();
 
 function getCurrentLocation(initial = false) {
   return new Promise(resolve => {
@@ -1111,38 +1207,17 @@ async function loadDictionary() {
 
 loadDictionary();
 // --- ChatGPT integration ---
-
-function setOpenAIApiKey(key) {
-  openaiApiKey = key;
-  openaiClient = null; // reset so fresh client picks up new key
-  if (key) {
-    localStorage.setItem('openaiApiKey', key);
-  } else {
-    localStorage.removeItem('openaiApiKey');
-  }
-}
-
-// OneMap API key handling removed
-
 async function extractInfoGPT(rawText) {
-  if (!openaiApiKey) return null;
+  if (!hasOpenAIProxy()) return null;
   try {
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + openaiApiKey
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        temperature: 0,
-        messages: [
-          { role: 'system', content: 'You extract structured data from storefront OCR.' },
-          { role: 'user', content: `Extract JSON with keys: storeName, unitNumber, address, category. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" if unknown. OCR: """${rawText}"""` }
-        ]
-      })
+    const data = await callOpenAIProxy('/v1/chat/completions', {
+      model: 'gpt-3.5-turbo',
+      temperature: 0,
+      messages: [
+        { role: 'system', content: 'You extract structured data from storefront OCR.' },
+        { role: 'user', content: `Extract JSON with keys: storeName, unitNumber, address, category. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" if unknown. OCR: """${rawText}"""` }
+      ]
     });
-    const data = await resp.json();
     const content = data.choices?.[0]?.message?.content || '';
     const match = content.match(/\{[\s\S]*\}/);
     if (!match) return null;
@@ -1151,16 +1226,6 @@ async function extractInfoGPT(rawText) {
     console.warn('ChatGPT parsing failed', err);
     return null;
   }
-}
-
-// Prompt user to set API key if not already stored
-if (!openaiApiKey) {
-  setTimeout(() => {
-    if (confirm('Enter your OpenAI API key to enable ChatGPT parsing?')) {
-      const key = prompt('OpenAI API key (sk-...)');
-      if (key) setOpenAIApiKey(key.trim());
-    }
-  }, 500);
 }
 
 // OneMap API prompt removed
@@ -1194,6 +1259,7 @@ async function initCamera() {
     });
     video.srcObject = stream;
     window.currentCameraStream = stream;
+    cameraInitialized = true;
     try {
       const track = stream.getVideoTracks && stream.getVideoTracks()[0];
       if (track) {
@@ -1206,10 +1272,9 @@ async function initCamera() {
   } catch (err) {
     console.error(err);
     statusDiv.textContent = 'Camera access denied: ' + err.message;
+    cameraInitialized = false;
   }
 }
-
-initCamera();
 
 // --- Zoom functionality ---
 const defaultZoom = 1.0;
@@ -1605,13 +1670,15 @@ async function performScanFromCanvas(canvas) {
 
   // Try Vision JSON extraction first
   let parsed = null;
-  if (openaiApiKey) {
+  if (hasOpenAIProxy()) {
     showScanningOverlay('Analyzing...');
     statusDiv.textContent = 'Analyzing with GPT-4o…';
     parsed = await extractInfoVision(imageDataUrl);
     if (parsed) {
       console.log('Vision JSON:', parsed);
     }
+  } else {
+    console.info('OpenAI proxy not configured; skipping GPT-4o vision extraction.');
   }
 
   // Try to get a quick location, but don't block scanning
@@ -1704,25 +1771,6 @@ async function performScanFromCanvas(canvas) {
   sortScansNewestFirst();
   saveScans();
   renderTable();
-  
-  // Background: try to find official website without blocking UI
-  try {
-    const nameForSearch = info.storeNameEnglish || info.storeName || '';
-    const localityHint = info.street || info.building || info.address || '';
-    if (nameForSearch) {
-      findOfficialWebsite(nameForSearch, localityHint).then(url => {
-        if (url) {
-          // Item was unshifted at index 0
-          const target = scans.find(s => (s.timestamp === info.timestamp && s.photoId === info.photoId));
-          if (target) {
-            target.website = url;
-            saveScans();
-            renderTable();
-          }
-        }
-      }).catch(()=>{});
-    }
-  } catch (_) {}
   
   // Show completion message
   showScanComplete();
@@ -2920,8 +2968,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // iOS Safari location fix - request permission first
-  requestLocationPermission();
 });
 
 // Request location permission and handle iOS Safari issues
@@ -3235,4 +3281,18 @@ function createMarkerIcon(status = 'pending', style = currentMarkerStyle) {
   if (style === 'dot') html = '<div class="dot-marker"></div>';
   if (style === 'circle') html = '<div class="circle-marker"></div>';
   return L.divIcon({ className: `scan-status-marker ${status}`, html, iconSize: [18,18], iconAnchor: [9,9] });
+}
+
+const versionHistoryBtn = document.getElementById('versionHistoryBtn');
+const appVersionLabel = document.getElementById('appVersion');
+const APP_VERSION = '1.0.0';
+
+if (appVersionLabel) {
+  appVersionLabel.textContent = APP_VERSION;
+}
+
+if (versionHistoryBtn) {
+  versionHistoryBtn.addEventListener('click', () => {
+    alert('Version history coming soon. Current version: ' + APP_VERSION);
+  });
 }
