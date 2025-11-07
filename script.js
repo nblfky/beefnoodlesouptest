@@ -40,6 +40,34 @@ async function callOpenAIProxy(endpoint, payload) {
   return res.text();
 }
 
+// Splash Screen Logic
+const splashScreen = document.getElementById('splashScreen');
+const appShell = document.getElementById('appShell');
+
+function hideSplashScreen() {
+  if (splashScreen) {
+    splashScreen.classList.remove('active');
+    setTimeout(() => {
+      splashScreen.style.display = 'none';
+    }, 500); // Wait for fade-out transition
+  }
+}
+
+function showHomeScreen() {
+  const homeScreen = document.getElementById('homeScreen');
+  if (homeScreen) {
+    homeScreen.classList.add('active');
+  }
+}
+
+// Show splash for 2 seconds, then transition to home
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    hideSplashScreen();
+    showHomeScreen();
+  }, 2000); // 2 second splash duration
+});
+
 const screens = {
   home: document.getElementById('homeScreen'),
   visionMenu: document.getElementById('visionMenu'),
