@@ -184,7 +184,7 @@
   .home-brand {
     font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 32px;
-    font-weight: 400;
+    font-weight: 900;
     letter-spacing: -0.02em;
     color: var(--text);
     text-transform: lowercase;
