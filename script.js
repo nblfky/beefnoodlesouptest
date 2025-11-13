@@ -1957,36 +1957,77 @@ if (uploadBtn && imageInput) {
   uploadBtn.addEventListener('click', () => imageInput.click());
 
   imageInput.addEventListener('change', async e => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    const img = new Image();
-    img.onload = async () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      
-      // Check if photo capture is enabled for uploaded images too
-      const photoCaptureEnabled = localStorage.getItem('photoCaptureEnabled') !== 'false';
-      
-      if (photoCaptureEnabled) {
-        // Capture and save photo to gallery for uploaded images too
-        const photoSaved = await captureAndSavePhoto(canvas);
-        
-        if (photoSaved) {
-          console.log('✅ Uploaded photo processed and saved to gallery');
-        } else {
-          console.warn('⚠️ Failed to save uploaded photo to gallery');
-        }
+    const total = files.length;
+    const failedFiles = [];
+
+    statusDiv.textContent = `Preparing ${total} photo${total > 1 ? 's' : ''}…`;
+
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      try {
+        await processImageFile(file, index + 1, total);
+      } catch (err) {
+        console.error('⚠️ Bulk upload error:', err);
+        failedFiles.push(file.name || `Photo ${index + 1}`);
+        hideScanningOverlay();
+        progressBar.style.display = 'none';
       }
-      
-      await performScanFromCanvas(canvas);
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = URL.createObjectURL(file);
+    }
+
+    // Reset file input so the same files can be selected again later
     imageInput.value = '';
+
+    if (failedFiles.length) {
+      statusDiv.textContent = `Processed ${total - failedFiles.length}/${total} photos. Failed: ${failedFiles.join(', ')}`;
+    } else {
+      statusDiv.textContent = `Processed ${total}/${total} photos successfully.`;
+    }
+  });
+}
+
+async function processImageFile(file, currentIndex, total) {
+  showScanningOverlay(`Processing photo ${currentIndex} of ${total}…`);
+  statusDiv.textContent = `Processing photo ${currentIndex} of ${total}…`;
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(objectUrl);
+    const canvas = document.createElement('canvas');
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
+
+    if (!width || !height) {
+      throw new Error('Invalid image dimensions.');
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const photoCaptureEnabled = localStorage.getItem('photoCaptureEnabled') !== 'false';
+    if (photoCaptureEnabled) {
+      const photoSaved = await captureAndSavePhoto(canvas);
+      if (!photoSaved) {
+        console.warn('⚠️ Failed to save uploaded photo to gallery');
+      }
+    }
+
+    await performScanFromCanvas(canvas);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = err => reject(err);
+    img.src = src;
   });
 }
 
