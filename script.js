@@ -1992,7 +1992,30 @@ async function processImageFile(file, currentIndex, total) {
   showScanningOverlay(`Processing photo ${currentIndex} of ${total}…`);
   statusDiv.textContent = `Processing photo ${currentIndex} of ${total}…`;
 
-  const objectUrl = URL.createObjectURL(file);
+  let workingFile = file;
+  const isHeic = /heic|heif/i.test(file.type) || /\\.heic$|\\.heif$/i.test(file.name || '');
+
+  if (isHeic) {
+    if (typeof window.heic2any === 'function') {
+      showScanningOverlay(`Converting photo ${currentIndex} of ${total}…`);
+      statusDiv.textContent = `Converting photo ${currentIndex} of ${total}…`;
+      try {
+        const convertedBlob = await window.heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.9
+        });
+        const newName = (file.name || `photo_${currentIndex}.heic`).replace(/\\.heic$|\\.heif$/i, '.jpg');
+        workingFile = new File([convertedBlob], newName, { type: 'image/jpeg' });
+      } catch (conversionError) {
+        throw new Error(`Could not convert HEIC photo (${file.name || 'unknown'}).`);
+      }
+    } else {
+      throw new Error('HEIC images are not supported in this browser.');
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(workingFile);
   try {
     const img = await loadImage(objectUrl);
     const canvas = document.createElement('canvas');
