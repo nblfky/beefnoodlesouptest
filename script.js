@@ -1993,22 +1993,27 @@ async function processImageFile(file, currentIndex, total) {
   statusDiv.textContent = `Processing photo ${currentIndex} of ${total}…`;
 
   let workingFile = file;
-  const isHeic = /heic|heif/i.test(file.type) || /\\.heic$|\\.heif$/i.test(file.name || '');
+  const originalName = file.name || `photo_${currentIndex}`;
+  const isHeic = /heic|heif/i.test(file.type) || /\.heic$|\.heif$/i.test(originalName);
 
   if (isHeic) {
     if (typeof window.heic2any === 'function') {
       showScanningOverlay(`Converting photo ${currentIndex} of ${total}…`);
       statusDiv.textContent = `Converting photo ${currentIndex} of ${total}…`;
       try {
-        const convertedBlob = await window.heic2any({
+        const conversionResult = await window.heic2any({
           blob: file,
           toType: 'image/jpeg',
           quality: 0.9
         });
-        const newName = (file.name || `photo_${currentIndex}.heic`).replace(/\\.heic$|\\.heif$/i, '.jpg');
+        const convertedBlob = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult;
+        if (!(convertedBlob instanceof Blob)) {
+          throw new Error('Conversion did not return a valid image blob.');
+        }
+        const newName = originalName.replace(/\.heic$|\.heif$/i, '.jpg');
         workingFile = new File([convertedBlob], newName, { type: 'image/jpeg' });
-      } catch (conversionError) {
-        throw new Error(`Could not convert HEIC photo (${file.name || 'unknown'}).`);
+      } catch (_) {
+        throw new Error(`Could not convert HEIC photo (${originalName}).`);
       }
     } else {
       throw new Error('HEIC images are not supported in this browser.');
@@ -2017,7 +2022,7 @@ async function processImageFile(file, currentIndex, total) {
 
   const objectUrl = URL.createObjectURL(workingFile);
   try {
-    const img = await loadImage(objectUrl);
+    const img = await loadImage(objectUrl, workingFile.name || originalName);
     const canvas = document.createElement('canvas');
     const width = img.naturalWidth || img.width;
     const height = img.naturalHeight || img.height;
@@ -2045,11 +2050,11 @@ async function processImageFile(file, currentIndex, total) {
   }
 }
 
-function loadImage(src) {
+function loadImage(src, label = 'image') {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = err => reject(err);
+    img.onerror = () => reject(new Error(`Failed to decode ${label}`));
     img.src = src;
   });
 }
