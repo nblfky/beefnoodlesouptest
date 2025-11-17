@@ -72,13 +72,14 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 let screens = {};
-let visionEntryBtn, homeBackBtn, visionMenuBackBtn, batchBackBtn, startScanningBtn, versionHistoryBackBtn;
+let visionEntryBtn, homeBackBtn, visionMenuBackBtn, batchBackBtn, startScanningBtn, versionHistoryBackBtn, guideBackBtn;
 let visionMenuTiles, visionTabButtons, visionViews;
 
 function initializeScreens() {
   screens = {
     home: document.getElementById('homeScreen'),
     versionHistory: document.getElementById('versionHistoryScreen'),
+    guide: document.getElementById('guideScreen'),
     visionMenu: document.getElementById('visionMenu'),
     visionApp: document.getElementById('visionApp'),
     batchUpload: document.getElementById('batchUploadScreen')
@@ -90,6 +91,7 @@ function initializeScreens() {
   batchBackBtn = document.getElementById('batchBackBtn');
   startScanningBtn = document.getElementById('startScanningBtn');
   versionHistoryBackBtn = document.getElementById('versionHistoryBackBtn');
+  guideBackBtn = document.getElementById('guideBackBtn');
   visionMenuTiles = document.querySelectorAll('[data-vision-target]');
   visionTabButtons = document.querySelectorAll('#visionApp .vision-tab');
   visionViews = document.querySelectorAll('#visionApp .vision-view');
@@ -191,6 +193,12 @@ function setupNavigationListeners() {
     });
   }
 
+  if (guideBackBtn) {
+    guideBackBtn.addEventListener('click', () => {
+      setActiveScreen(screens.visionMenu);
+    });
+  }
+
   visionMenuTiles.forEach(tile => {
     tile.addEventListener('click', () => {
       const target = tile.dataset.visionTarget;
@@ -202,6 +210,8 @@ function setupNavigationListeners() {
       
       if (target === 'batch') {
         setActiveScreen(screens.batchUpload);
+      } else if (target === 'guide') {
+        setActiveScreen(screens.guide);
       } else if (target === 'data' || target === 'map') {
         setActiveScreen(screens.visionApp);
         setVisionView(target);
