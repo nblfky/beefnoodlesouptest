@@ -295,9 +295,6 @@ const progressFill = document.getElementById('progressFill');
 // --- NEW: Scanning overlay elements ---
 const scanningOverlay = document.getElementById('scanningOverlay');
 const scanningText = document.querySelector('.scanning-text');
-// Legacy single upload elements (may be absent in DOM)
-const uploadBtn = document.getElementById('uploadBtn');
-const imageInput = document.getElementById('imageInput');
 // --- NEW: Zoom control elements ---
 const zoomInBtn = document.getElementById('zoomIn');
 const zoomOutBtn = document.getElementById('zoomOut');
@@ -2009,11 +2006,15 @@ document.getElementById('scanBtn').addEventListener('click', async () => {
   await performScanFromCanvas(canvas);
 });
 
-// Upload image handler
-if (uploadBtn && imageInput) {
-  uploadBtn.addEventListener('click', () => imageInput.click());
+// Upload image handler (legacy button, may be absent)
+(function setupLegacyUploadHandler() {
+  const legacyUploadBtn = document.getElementById('uploadBtn');
+  const legacyImageInput = document.getElementById('imageInput');
+  if (!legacyUploadBtn || !legacyImageInput) return;
 
-  imageInput.addEventListener('change', async e => {
+  legacyUploadBtn.addEventListener('click', () => legacyImageInput.click());
+
+  legacyImageInput.addEventListener('change', async e => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
@@ -2035,7 +2036,7 @@ if (uploadBtn && imageInput) {
     }
 
     // Reset file input so the same files can be selected again later
-    imageInput.value = '';
+    legacyImageInput.value = '';
 
     if (failedFiles.length) {
       statusDiv.textContent = `Processed ${total - failedFiles.length}/${total} photos. Failed: ${failedFiles.join(', ')}`;
@@ -2043,7 +2044,7 @@ if (uploadBtn && imageInput) {
       statusDiv.textContent = `Processed ${total}/${total} photos successfully.`;
     }
   });
-}
+})();
 
 async function processImageFile(file, currentIndex, total) {
   showScanningOverlay(`Processing photo ${currentIndex} of ${total}…`);
