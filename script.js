@@ -468,6 +468,73 @@ function showScanComplete() {
     }, 1500);
   }
 }
+
+function showScanCompleteBanner(scanData) {
+  // Remove any existing banner
+  const existingBanner = document.querySelector('.scan-complete-banner');
+  if (existingBanner) {
+    existingBanner.remove();
+  }
+
+  // Create banner element
+  const banner = document.createElement('div');
+  banner.className = 'scan-complete-banner';
+  
+  const storeName = scanData.storeName || 'Unknown Store';
+  const address = scanData.address || scanData.street || 'No address';
+  const photoUrl = scanData.photoData || '';
+  
+  banner.innerHTML = `
+    <div class="banner-header">
+      <span class="banner-icon">✓</span>
+      <span class="banner-title">Scan Complete!</span>
+      <button class="banner-close" onclick="this.parentElement.parentElement.remove()">×</button>
+    </div>
+    <div class="banner-content">
+      ${photoUrl ? `<img src="${photoUrl}" class="banner-thumbnail" alt="Store photo">` : '<div class="banner-thumbnail" style="background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 20px;">📷</div>'}
+      <div class="banner-details">
+        <div class="banner-store-name">${storeName}</div>
+        <div class="banner-address">${address}</div>
+      </div>
+      <span class="banner-arrow">→</span>
+    </div>
+  `;
+  
+  // Add click handler to navigate to Records
+  banner.addEventListener('click', (e) => {
+    // Don't navigate if clicking the close button
+    if (e.target.classList.contains('banner-close')) {
+      return;
+    }
+    
+    // Navigate to Records view
+    setActiveScreen(screens.visionApp);
+    setVisionView('data');
+    
+    // Remove banner
+    banner.remove();
+  });
+  
+  // Add to page
+  document.body.appendChild(banner);
+  
+  // Show banner with animation
+  setTimeout(() => {
+    banner.classList.add('show');
+  }, 100);
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    if (banner.parentElement) {
+      banner.classList.remove('show');
+      setTimeout(() => {
+        if (banner.parentElement) {
+          banner.remove();
+        }
+      }, 400);
+    }
+  }, 5000);
+}
 // OneMap API key removed – switching to Nominatim for reverse geocoding
 try {
   scans = JSON.parse(localStorage.getItem('scans') || '[]');
@@ -1879,6 +1946,9 @@ async function performScanFromCanvas(canvas) {
     renderTable();
 
     showScanComplete();
+    
+    // Show banner notification with scan result
+    showScanCompleteBanner(info);
   } finally {
     statusDiv.textContent = '';
     progressBar.style.display = 'none';

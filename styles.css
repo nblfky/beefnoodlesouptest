@@ -843,6 +843,31 @@
       display: none;
     }
 
+    .camera-status {
+      position: absolute;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(10px);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 15;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      max-width: calc(100% - 40px);
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .camera-status:empty {
+      display: none;
+    }
+
     .toolbar {
       display: flex;
       gap: 12px;
@@ -1130,6 +1155,166 @@
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
+    }
+
+    /* Scan Complete Banner */
+    .scan-complete-banner {
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 40px);
+      max-width: 400px;
+      background: linear-gradient(135deg, rgba(75, 224, 168, 0.95) 0%, rgba(30, 188, 150, 0.95) 100%);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      z-index: 9999;
+      cursor: pointer;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .scan-complete-banner.show {
+      top: 20px;
+      animation: bannerSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .scan-complete-banner:hover {
+      transform: translateX(-50%) translateY(-2px) scale(1.02);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+
+    .scan-complete-banner:active {
+      transform: translateX(-50%) translateY(0) scale(0.98);
+    }
+
+    @keyframes bannerSlideIn {
+      0% {
+        top: -200px;
+        opacity: 0;
+      }
+      100% {
+        top: 20px;
+        opacity: 1;
+      }
+    }
+
+    .banner-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .banner-icon {
+      font-size: 24px;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    }
+
+    .banner-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: white;
+      flex: 1;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+
+    .banner-close {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease;
+    }
+
+    .banner-close:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .banner-content {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 10px;
+      border-radius: 10px;
+      backdrop-filter: blur(5px);
+    }
+
+    .banner-thumbnail {
+      width: 50px;
+      height: 50px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .banner-details {
+      flex: 1;
+      color: white;
+    }
+
+    .banner-store-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .banner-address {
+      font-size: 12px;
+      opacity: 0.9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .banner-arrow {
+      font-size: 20px;
+      color: white;
+      opacity: 0.8;
+    }
+
+    @media (max-width: 480px) {
+      .scan-complete-banner {
+        width: calc(100% - 32px);
+        padding: 14px;
+      }
+
+      .scan-complete-banner.show {
+        top: 16px;
+      }
+
+      .banner-title {
+        font-size: 15px;
+      }
+
+      .banner-thumbnail {
+        width: 45px;
+        height: 45px;
+      }
+
+      .banner-store-name {
+        font-size: 13px;
+      }
+
+      .banner-address {
+        font-size: 11px;
+      }
     }
 
     .scan-btn:disabled {
