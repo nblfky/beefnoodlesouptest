@@ -72,12 +72,13 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 let screens = {};
-let visionEntryBtn, homeBackBtn, visionMenuBackBtn, batchBackBtn, startScanningBtn;
+let visionEntryBtn, homeBackBtn, visionMenuBackBtn, batchBackBtn, startScanningBtn, versionHistoryBackBtn;
 let visionMenuTiles, visionTabButtons, visionViews;
 
 function initializeScreens() {
   screens = {
     home: document.getElementById('homeScreen'),
+    versionHistory: document.getElementById('versionHistoryScreen'),
     visionMenu: document.getElementById('visionMenu'),
     visionApp: document.getElementById('visionApp'),
     batchUpload: document.getElementById('batchUploadScreen')
@@ -88,6 +89,7 @@ function initializeScreens() {
   visionMenuBackBtn = document.getElementById('visionMenuBackBtn');
   batchBackBtn = document.getElementById('batchBackBtn');
   startScanningBtn = document.getElementById('startScanningBtn');
+  versionHistoryBackBtn = document.getElementById('versionHistoryBackBtn');
   visionMenuTiles = document.querySelectorAll('[data-vision-target]');
   visionTabButtons = document.querySelectorAll('#visionApp .vision-tab');
   visionViews = document.querySelectorAll('#visionApp .vision-view');
@@ -180,6 +182,12 @@ function setupNavigationListeners() {
     startScanningBtn.addEventListener('click', () => {
       setActiveScreen(screens.visionApp);
       setVisionView('camera');
+    });
+  }
+
+  if (versionHistoryBackBtn) {
+    versionHistoryBackBtn.addEventListener('click', () => {
+      setActiveScreen(screens.home);
     });
   }
 
@@ -3882,7 +3890,7 @@ function createMarkerIcon(status = 'pending', style = currentMarkerStyle) {
 
 const versionHistoryBtn = document.getElementById('versionHistoryBtn');
 const appVersionLabel = document.getElementById('appVersion');
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '2.0.0';
 
 if (appVersionLabel) {
   appVersionLabel.textContent = APP_VERSION;
@@ -3890,6 +3898,6 @@ if (appVersionLabel) {
 
 if (versionHistoryBtn) {
   versionHistoryBtn.addEventListener('click', () => {
-    alert('Version history coming soon. Current version: ' + APP_VERSION);
+    setActiveScreen(screens.versionHistory);
   });
 }
