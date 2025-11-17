@@ -66,23 +66,35 @@ window.addEventListener('DOMContentLoaded', () => {
     hideSplashScreen();
     showHomeScreen();
   }, 2000); // 2 second splash duration
+  
+  // Initialize screens after DOM is loaded
+  initializeScreens();
 });
 
-const screens = {
-  home: document.getElementById('homeScreen'),
-  visionMenu: document.getElementById('visionMenu'),
-  visionApp: document.getElementById('visionApp'),
-  batchUpload: document.getElementById('batchUploadScreen')
-};
+let screens = {};
+let visionEntryBtn, homeBackBtn, visionMenuBackBtn, batchBackBtn, startScanningBtn;
+let visionMenuTiles, visionTabButtons, visionViews;
 
-const visionEntryBtn = document.getElementById('visionEntry');
-const homeBackBtn = document.getElementById('homeBackBtn');
-const visionMenuBackBtn = document.getElementById('visionMenuBackBtn');
-const batchBackBtn = document.getElementById('batchBackBtn');
-const startScanningBtn = document.getElementById('startScanningBtn');
-const visionMenuTiles = document.querySelectorAll('[data-vision-target]');
-const visionTabButtons = document.querySelectorAll('.vision-tab');
-const visionViews = document.querySelectorAll('.vision-view');
+function initializeScreens() {
+  screens = {
+    home: document.getElementById('homeScreen'),
+    visionMenu: document.getElementById('visionMenu'),
+    visionApp: document.getElementById('visionApp'),
+    batchUpload: document.getElementById('batchUploadScreen')
+  };
+
+  visionEntryBtn = document.getElementById('visionEntry');
+  homeBackBtn = document.getElementById('homeBackBtn');
+  visionMenuBackBtn = document.getElementById('visionMenuBackBtn');
+  batchBackBtn = document.getElementById('batchBackBtn');
+  startScanningBtn = document.getElementById('startScanningBtn');
+  visionMenuTiles = document.querySelectorAll('[data-vision-target]');
+  visionTabButtons = document.querySelectorAll('.vision-tab');
+  visionViews = document.querySelectorAll('.vision-view');
+  
+  // Setup event listeners
+  setupNavigationListeners();
+}
 
 let cameraInitialized = false;
 let cameraInitPromise = null;
@@ -139,60 +151,65 @@ function setVisionView(targetView = 'data') {
   }
 }
 
-if (visionEntryBtn) {
-  visionEntryBtn.addEventListener('click', () => {
-    setActiveScreen(screens.visionMenu);
-  });
-}
+function setupNavigationListeners() {
+  if (visionEntryBtn) {
+    visionEntryBtn.addEventListener('click', () => {
+      setActiveScreen(screens.visionMenu);
+    });
+  }
 
-if (homeBackBtn) {
-  homeBackBtn.addEventListener('click', () => {
-    setActiveScreen(screens.home);
-  });
-}
+  if (homeBackBtn) {
+    homeBackBtn.addEventListener('click', () => {
+      setActiveScreen(screens.home);
+    });
+  }
 
-if (visionMenuBackBtn) {
-  visionMenuBackBtn.addEventListener('click', () => {
-    setActiveScreen(screens.visionMenu);
-  });
-}
+  if (visionMenuBackBtn) {
+    visionMenuBackBtn.addEventListener('click', () => {
+      setActiveScreen(screens.visionMenu);
+    });
+  }
 
-if (batchBackBtn) {
-  batchBackBtn.addEventListener('click', () => {
-    setActiveScreen(screens.visionMenu);
-  });
-}
+  if (batchBackBtn) {
+    batchBackBtn.addEventListener('click', () => {
+      setActiveScreen(screens.visionMenu);
+    });
+  }
 
-if (startScanningBtn) {
-  startScanningBtn.addEventListener('click', () => {
-    setActiveScreen(screens.visionApp);
-    setVisionView('camera');
-  });
-}
-
-visionMenuTiles.forEach(tile => {
-  tile.addEventListener('click', () => {
-    const target = tile.dataset.visionTarget;
-    
-    // Ignore disabled tiles
-    if (tile.classList.contains('disabled')) {
-      return;
-    }
-    
-    if (target === 'batch') {
-      setActiveScreen(screens.batchUpload);
-    } else if (target === 'data' || target === 'map') {
+  if (startScanningBtn) {
+    startScanningBtn.addEventListener('click', () => {
       setActiveScreen(screens.visionApp);
-      setVisionView(target);
-    }
-  });
-});
+      setVisionView('camera');
+    });
+  }
 
-visionTabButtons.forEach(tab => {
-  tab.addEventListener('click', () => {
-    setVisionView(tab.dataset.view);
+  visionMenuTiles.forEach(tile => {
+    tile.addEventListener('click', () => {
+      const target = tile.dataset.visionTarget;
+      
+      // Ignore disabled tiles
+      if (tile.classList.contains('disabled')) {
+        return;
+      }
+      
+      if (target === 'batch') {
+        console.log('Opening batch upload screen', screens.batchUpload);
+        setActiveScreen(screens.batchUpload);
+      } else if (target === 'data' || target === 'map') {
+        setActiveScreen(screens.visionApp);
+        setVisionView(target);
+      }
+    });
   });
-});
+
+  visionTabButtons.forEach(tab => {
+    tab.addEventListener('click', () => {
+      setVisionView(tab.dataset.view);
+    });
+  });
+  
+  setActiveScreen(screens.home);
+}
 
 function ensureCameraReady() {
   if (cameraInitialized) return cameraInitPromise || Promise.resolve();
@@ -216,9 +233,6 @@ function ensureLocationReady() {
   });
   return locationInitPromise;
 }
-
-setActiveScreen(screens.home);
-// Don't initialize camera view on startup - only when user navigates to it
 
 // Analyse an image with GPT-4o Vision style prompt. Accepts a question and a data-URL or remote image URL.
 async function askImageQuestion(question, imageUrl) {
