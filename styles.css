@@ -296,9 +296,11 @@
 
   .vision-menu-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: center;
     gap: 16px;
     padding: 20px 20px 0 20px;
+    position: relative;
   }
 
   .icon-btn {
@@ -314,6 +316,8 @@
     justify-content: center;
     cursor: pointer;
     transition: transform 0.2s ease, background 0.2s ease;
+    position: absolute;
+    left: 20px;
   }
 
   .icon-btn:hover {
@@ -324,26 +328,27 @@
   .vision-menu-title {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
   }
 
   .vision-menu-title h1 {
     margin: 0;
-    font-size: 26px;
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-transform: lowercase;
+    text-align: center;
+  }
+
+  .vision-suffix {
     font-weight: 700;
-  }
-
-  .vision-menu-title .eyebrow {
-    font-size: 13px;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-  }
-
-  .vision-menu-tagline {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 14px;
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
   .vision-menu-grid {
