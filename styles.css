@@ -339,7 +339,6 @@
     font-size: 24px;
     font-weight: 600;
     letter-spacing: -0.02em;
-    text-transform: lowercase;
     text-align: center;
   }
 
@@ -349,6 +348,7 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    text-transform: none;
   }
 
   .vision-menu-grid {
@@ -533,18 +533,25 @@
   .vision-topbar {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 14px;
     padding: 20px 20px 16px 20px;
     background: linear-gradient(135deg, rgba(75, 224, 168, 0.15), rgba(30, 188, 150, 0.1));
     border-bottom: 1px solid rgba(75, 224, 168, 0.2);
+    position: relative;
+  }
+
+  .vision-topbar .icon-btn {
+    position: absolute;
+    left: 20px;
   }
 
   .view-title {
-    flex: 1;
     margin: 0;
     font-size: 20px;
     font-weight: 600;
     color: var(--text);
+    text-align: center;
   }
 
   .vision-tabs {
