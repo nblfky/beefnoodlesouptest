@@ -1741,20 +1741,32 @@ function showDuplicateDetected(storeName, address) {
   console.log(`Duplicate store detected and rejected: "${storeName}" at "${address}"`);
 }
 
-// --- Helper: run OCR + processing on any canvas source (camera or uploaded) ---
-async function performScanFromCanvas(canvas) {
-  showScanningOverlay('Scanning...');
-  statusDiv.textContent = 'Scanning…';
-  progressBar.style.display = 'block';
-  progressFill.style.width = '0%';
+async function buildScanInfo(canvas, { statusElement = statusDiv, showOverlay = true } = {}) {
+  const updateStatus = message => {
+    if (statusElement) {
+      statusElement.textContent = message || '';
+    }
+  };
+
+  const updateProgress = percent => {
+    if (showOverlay && progressBar) {
+      progressBar.style.display = 'block';
+      progressFill.style.width = `${percent}%`;
+    }
+  };
+
+  if (showOverlay) {
+    showScanningOverlay('Scanning...');
+    updateProgress(0);
+  }
+  updateStatus('Scanning…');
 
   const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
 
-  // Try Vision JSON extraction first
   let parsed = null;
   if (hasOpenAIProxy()) {
-    showScanningOverlay('Analyzing...');
-    statusDiv.textContent = 'Analyzing with GPT-4o…';
+    if (showOverlay) showScanningOverlay('Analyzing...');
+    updateStatus('Analyzing with GPT-4o…');
     parsed = await extractInfoVision(imageDataUrl);
     if (parsed) {
       console.log('Vision JSON:', parsed);
@@ -1763,20 +1775,18 @@ async function performScanFromCanvas(canvas) {
     console.info('OpenAI proxy not configured; skipping GPT-4o vision extraction.');
   }
 
-  // Try to get a quick location, but don't block scanning
   let geo = currentLocation;
   if (!geo.lat) {
     geo = await getCurrentLocation();
   }
 
   if (!parsed) {
-    // Vision failed → run OCR fallback
     const result = await Tesseract.recognize(canvas, 'eng', {
       logger: m => {
         if (m.progress !== undefined) {
           const percent = Math.floor(m.progress * 100);
-          statusDiv.textContent = `Scanning… ${percent}%`;
-          progressFill.style.width = percent + '%';
+          updateStatus(`Scanning… ${percent}%`);
+          updateProgress(percent);
         }
       },
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:#&-.',
@@ -1786,79 +1796,93 @@ async function performScanFromCanvas(canvas) {
     const { text, confidence, lines } = result.data;
     console.log('OCR confidence', confidence);
 
-    showScanningOverlay('Processing text...');
-    statusDiv.textContent = 'Processing…';
+    if (showOverlay) showScanningOverlay('Processing text...');
+    updateStatus('Processing…');
 
     parsed = await extractInfoGPT(text);
     if (!parsed) parsed = extractInfo(text, lines);
   }
 
-  // Map extracted business type to canonical category (applies to Vision or OCR)
   if (parsed && parsed.category) {
     parsed.category = await mapToCompanyCategory(parsed.category);
   }
 
-  // Reverse geocode based on current device location (Singapore)
-  let finalLat, finalLng, addressParts;
-  finalLat = geo.lat || '';
-  finalLng = geo.lng || '';
+  let finalLat = geo.lat || '';
+  let finalLng = geo.lng || '';
+  let addressParts;
   if (geo.lat && geo.lng) {
     try {
       addressParts = await reverseGeocode(geo.lat, geo.lng);
-    } catch (_) { addressParts = { address: '', houseNo: '', street: '', building: '', postcode: '' }; }
+    } catch (_) {
+      addressParts = { address: '', houseNo: '', street: '', building: '', postcode: '' };
+    }
   } else {
-    addressParts = { address: parsed?.address || '', houseNo: '', street: '', building: '', postcode: '' };
+    addressParts = {
+      address: parsed?.address || '',
+      houseNo: '',
+      street: '',
+      building: '',
+      postcode: ''
+    };
   }
 
-  // Store photo data with the scan
   const timestamp = new Date().toISOString();
-  const photoId = `photo_${timestamp.replace(/[:.]/g, '-').slice(0, -5)}_${Math.random().toString(36).slice(2,8)}`;
+  const photoId = `photo_${timestamp.replace(/[:.]/g, '-').slice(0, -5)}_${Math.random().toString(36).slice(2, 8)}`;
   const photoFilename = `bnsVision_${parsed?.storeName || 'scan'}_${timestamp.replace(/[:.]/g, '-').slice(0, -5)}.jpg`;
-  // Save full-resolution to IndexedDB; keep thumbnail in memory/localStorage
   const fullResBlob = await new Promise(resolve => { canvas.toBlob(resolve, 'image/jpeg', 0.9); });
-  if (fullResBlob) {
-    savePhotoBlob(photoId, fullResBlob, photoFilename);
-  }
   const thumbDataUrl = createThumbnailDataURL(canvas, 400, 400, 0.6);
 
   const info = sanitizeObjectStrings(Object.assign(
-    { 
-      lat: finalLat, 
-      lng: finalLng, 
+    {
+      lat: finalLat,
+      lng: finalLng,
       address: addressParts?.address || parsed?.address || '',
       houseNo: addressParts?.houseNo || parsed?.houseNo || '',
       street: addressParts?.street || parsed?.street || '',
       building: addressParts?.building || parsed?.building || '',
       postcode: addressParts?.postcode || parsed?.postcode || '',
       photoData: thumbDataUrl,
-      timestamp: timestamp,
-      photoFilename: photoFilename,
-      photoId: photoId
+      timestamp,
+      photoFilename,
+      photoId
     },
     parsed
   ));
 
-  // Check for duplicates before adding
-  if (isDuplicateStore(info)) {
-    // Show duplicate detection message
-    showDuplicateDetected(info.storeName, info.address);
+  return { info, fullResBlob };
+}
+
+// --- Helper: run OCR + processing on any canvas source (camera or uploaded) ---
+async function performScanFromCanvas(canvas) {
+  try {
+    const analysis = await buildScanInfo(canvas, { statusElement: statusDiv, showOverlay: true });
+    const info = analysis?.info;
+    if (!info) {
+      statusDiv.textContent = 'Unable to read this photo.';
+      return;
+    }
+
+    if (isDuplicateStore(info)) {
+      showDuplicateDetected(info.storeName, info.address);
+      statusDiv.textContent = '';
+      progressBar.style.display = 'none';
+      return;
+    }
+
+    if (analysis.fullResBlob) {
+      savePhotoBlob(info.photoId, analysis.fullResBlob, info.photoFilename);
+    }
+
+    scans.unshift(info);
+    sortScansNewestFirst();
+    saveScans();
+    renderTable();
+
+    showScanComplete();
+  } finally {
     statusDiv.textContent = '';
     progressBar.style.display = 'none';
-    return; // Don't add duplicate
   }
-
-  // Insert newest scan at the top
-  scans.unshift(info);
-  // Keep array sorted by newest-first as a safety net
-  sortScansNewestFirst();
-  saveScans();
-  renderTable();
-  
-  // Show completion message
-  showScanComplete();
-  
-  statusDiv.textContent = '';
-  progressBar.style.display = 'none';
 }
 
 // Helper function to capture and save photo to gallery
@@ -2207,31 +2231,38 @@ async function processBatchImageFile(file, currentIndex, total) {
 }
 
 async function performBatchScanFromCanvas(canvas, photoDataUrl) {
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-  
-  // Extract info using Vision AI
-  const visionData = await extractInfoVision(dataUrl);
-  
+  const analysis = await buildScanInfo(canvas, { statusElement: batchStatusDiv, showOverlay: false });
+  const baseInfo = analysis?.info;
+
+  if (!baseInfo) {
+    if (batchStatusDiv) batchStatusDiv.textContent = 'Unable to read one of the photos.';
+    return;
+  }
+
   const scan = {
     id: Date.now() + Math.random(),
-    timestamp: new Date().toISOString(),
-    photoDataUrl: photoDataUrl,
-    storeName: sanitizeString(visionData?.storeName),
-    unitNumber: sanitizeString(visionData?.unitNumber),
-    address: sanitizeString(visionData?.address),
-    category: sanitizeString(visionData?.category),
-    lat: '',
-    lng: '',
-    house_no: '',
-    street: '',
-    building: '',
-    postcode: '',
-    remarks: ''
+    timestamp: baseInfo.timestamp,
+    photoDataUrl: photoDataUrl || baseInfo.photoData,
+    storeName: baseInfo.storeName || '',
+    unitNumber: baseInfo.unitNumber || '',
+    address: baseInfo.address || '',
+    category: baseInfo.category || '',
+    lat: baseInfo.lat || '',
+    lng: baseInfo.lng || '',
+    house_no: baseInfo.houseNo || '',
+    street: baseInfo.street || '',
+    building: baseInfo.building || '',
+    postcode: baseInfo.postcode || '',
+    remarks: baseInfo.remarks || ''
   };
-  
+
   batchScans.push(scan);
   saveBatchScans();
   renderBatchTable();
+
+  if (batchStatusDiv) {
+    batchStatusDiv.textContent = `Added ${scan.storeName || 'one photo'} to batch records.`;
+  }
 }
 
 function saveBatchScans() {
