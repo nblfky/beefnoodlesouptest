@@ -344,10 +344,11 @@
   }
 
   .vision-menu-grid {
-    margin-top: 36px;
+    margin-top: 24px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
+    gap: 14px;
+    flex: 1;
   }
 
   .vision-menu-tile {
@@ -355,16 +356,16 @@
     border-radius: var(--border-radius);
     background: rgba(255, 255, 255, 0.04);
     color: var(--text);
-    padding: 24px 18px;
+    padding: 20px 14px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     cursor: pointer;
     box-shadow: var(--shadow);
     transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
     border: 1px solid var(--border);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
   }
 
@@ -374,9 +375,63 @@
     background: rgba(255, 255, 255, 0.08);
   }
 
+  .vision-menu-tile.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .vision-menu-tile.disabled:hover {
+    transform: none;
+    box-shadow: var(--shadow);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
   .tile-icon {
-    font-size: 28px;
+    font-size: 32px;
     filter: drop-shadow(0 10px 18px rgba(13, 197, 153, 0.25));
+  }
+
+  .vision-scan-action {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    padding-bottom: 10px;
+  }
+
+  .start-scanning-btn {
+    width: 100%;
+    max-width: 320px;
+    padding: 18px 24px;
+    border: none;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    box-shadow: 0 8px 24px rgba(75, 224, 168, 0.3);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .start-scanning-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(75, 224, 168, 0.4);
+  }
+
+  .start-scanning-btn:active {
+    transform: translateY(0);
+  }
+
+  .scan-icon {
+    font-size: 24px;
+  }
+
+  .scan-text {
+    letter-spacing: -0.3px;
   }
 
   #visionApp {
@@ -395,8 +450,15 @@
   .vision-topbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 14px;
+  }
+
+  .view-title {
+    flex: 1;
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
   }
 
   .vision-tabs {
@@ -424,6 +486,25 @@
     background: linear-gradient(135deg, rgba(75, 224, 168, 0.25), rgba(43, 179, 151, 0.35));
     color: var(--text);
     transform: translateY(-1px);
+  }
+
+  .batch-upload-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--border-radius);
+    border: 2px dashed var(--border);
+  }
+
+  .upload-hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-align: center;
   }
 
   .vision-view {

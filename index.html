@@ -60,18 +60,73 @@
         </div>
       </div>
       <div class="vision-menu-grid">
-        <button class="vision-menu-tile" data-vision-target="camera">
-          <div class="tile-icon">📷</div>
-          <span>Camera</span>
-        </button>
         <button class="vision-menu-tile" data-vision-target="data">
-          <div class="tile-icon">📊</div>
-          <span>Data</span>
+          <div class="tile-icon">📋</div>
+          <span>Records</span>
+        </button>
+        <button class="vision-menu-tile" data-vision-target="batch">
+          <div class="tile-icon">📤</div>
+          <span>Batch Upload</span>
         </button>
         <button class="vision-menu-tile" data-vision-target="map">
           <div class="tile-icon">🗺️</div>
           <span>Map</span>
         </button>
+        <button class="vision-menu-tile disabled" data-vision-target="guide">
+          <div class="tile-icon">📖</div>
+          <span>Guide</span>
+        </button>
+      </div>
+      <div class="vision-scan-action">
+        <button id="startScanningBtn" class="start-scanning-btn">
+          <span class="scan-icon">📷</span>
+          <span class="scan-text">Start Scanning</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Batch Upload Screen -->
+    <section id="batchUploadScreen" class="screen">
+      <div class="vision-app">
+        <div class="vision-topbar">
+          <button id="batchBackBtn" class="icon-btn" title="Back">⟵</button>
+          <h2 class="view-title">Batch Upload</h2>
+        </div>
+        <section class="vision-view active">
+          <div class="card">
+            <div class="batch-upload-area">
+              <button id="batchUploadBtn" class="btn">Select Images</button>
+              <input type="file" id="batchImageInput" accept="image/*" multiple style="display:none" />
+              <p class="upload-hint">Upload multiple storefront images at once</p>
+            </div>
+            <div id="batchStatus" class="muted"></div>
+            <div class="table-container">
+              <table id="batchResultsTable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Photo</th>
+                    <th>POI Name</th>
+                    <th>Lat-Long</th>
+                    <th>House_No</th>
+                    <th>Street</th>
+                    <th>Unit</th>
+                    <th>Building</th>
+                    <th>Postcode</th>
+                    <th>Remarks</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="toolbar">
+              <button id="batchExportBtn" class="btn">Export</button>
+              <button id="batchDownloadPhotosBtn" class="btn">Download Photos</button>
+              <button id="batchClearBtn" class="btn">Clear</button>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -80,45 +135,39 @@
       <div class="vision-app">
         <div class="vision-topbar">
           <button id="visionMenuBackBtn" class="icon-btn" title="Back">⟵</button>
-          <div class="vision-tabs">
-            <button class="vision-tab active" data-view="camera">Camera</button>
-            <button class="vision-tab" data-view="data">Data</button>
-            <button class="vision-tab" data-view="map">Map</button>
-          </div>
+          <h2 class="view-title" id="currentViewTitle">Records</h2>
         </div>
 
-        <section id="cameraView" class="vision-view active" data-view="camera">
-          <div class="video-wrapper">
-            <video id="camera" autoplay playsinline></video>
-            <div id="progressBar"><div id="progressFill"></div></div>
-            <button id="scanBtn" class="scan-btn">Scan</button>
-
-            <!-- Zoom Controls -->
-            <div class="zoom-controls">
-              <button id="zoomOut" class="zoom-btn" title="Zoom Out">−</button>
-              <div class="zoom-indicator">
-                <span id="zoomLevel">1.0x</span>
-              </div>
-              <button id="zoomIn" class="zoom-btn" title="Zoom In">+</button>
-              <button id="zoomReset" class="zoom-reset-btn" title="Reset Zoom">⌂</button>
-            </div>
-
-            <div id="scanningOverlay" class="scanning-overlay">
-              <div class="scanning-content">
-                <div class="spinner"></div>
-                <div class="scanning-text">Scanning...</div>
-              </div>
-            </div>
-          </div>
+        <section id="cameraView" class="vision-view" data-view="camera">
+    <div class="video-wrapper">
+      <video id="camera" autoplay playsinline></video>
+      <div id="progressBar"><div id="progressFill"></div></div>
+      <button id="scanBtn" class="scan-btn">Scan</button>
+      
+      <!-- Zoom Controls -->
+      <div class="zoom-controls">
+        <button id="zoomOut" class="zoom-btn" title="Zoom Out">−</button>
+        <div class="zoom-indicator">
+          <span id="zoomLevel">1.0x</span>
+        </div>
+        <button id="zoomIn" class="zoom-btn" title="Zoom In">+</button>
+        <button id="zoomReset" class="zoom-reset-btn" title="Reset Zoom">⌂</button>
+      </div>
+      
+      <div id="scanningOverlay" class="scanning-overlay">
+        <div class="scanning-content">
+          <div class="spinner"></div>
+          <div class="scanning-text">Scanning...</div>
+        </div>
+      </div>
+    </div>
         </section>
 
-        <section id="dataView" class="vision-view" data-view="data">
+        <section id="dataView" class="vision-view active" data-view="data">
           <div class="card">
             <div class="toolbar">
               <button id="exportBtn" class="btn">Export</button>
-              <button id="downloadAllPhotosBtn" class="btn">Download</button>
-              <button id="uploadBtn" class="btn">Upload</button>
-              <input type="file" id="imageInput" accept="image/*" multiple style="display:none" />
+              <button id="downloadAllPhotosBtn" class="btn">Download Photos</button>
             </div>
             <div class="search-toolbar">
               <input type="text" id="storeSearchInput" placeholder="Search for store name in table..." />
@@ -150,48 +199,48 @@
         </section>
 
         <section id="mapView" class="vision-view" data-view="map">
-          <div id="mapContainer" class="map-container">
-            <div class="map-header">
-              <div class="map-info">
-                <span id="mapStatus">📍 Loading location...</span>
-                <button id="toggleMiniMapBtn" class="map-follow-btn" title="Minimize map">▾</button>
-                <span id="routeProgress"></span>
-              </div>
-              <div class="map-header-buttons">
-                <button id="followLocationBtn" class="map-follow-btn" title="Follow Location">🎯</button>
-                <button id="requestLocationBtn" class="map-location-btn" title="Request Location" style="display:none;">📍</button>
-                <button id="mapExpandBtn" class="map-expand-btn" title="Expand Map">⛶</button>
-              </div>
-            </div>
-            <div id="miniMap" class="mini-map"></div>
-
-            <!-- Full Screen Map Overlay -->
-            <div id="fullMapOverlay" class="full-map-overlay hidden">
-              <div class="full-map-header">
-                <h3>Route Planning</h3>
-                <div class="map-controls">
-                  <button id="centerOnUserBtn" class="map-btn">📍 My Location</button>
-                  <button id="clearRouteBtn" class="map-btn">Clear Route</button>
-                  <button id="addRoutePointModeBtn" class="map-btn">Add Point</button>
-                  <button id="markerStyleBtn" class="map-btn" title="Cycle marker style">Marker: Cross</button>
-                  <button id="optimizeRouteBtn" class="map-btn">Optimize</button>
-                </div>
-                <button id="mapCloseBtn" class="map-close-btn">×</button>
-              </div>
-              <div id="fullMap" class="full-map"></div>
-              <div class="map-footer">
-                <div class="route-stats">
-                  <span id="routeDistance">Distance: 0 km</span>
-                  <span id="routeTime">Time: 0 min</span>
-                  <span id="routePoints">Points: 0</span>
-                </div>
-              </div>
-            </div>
+    <div id="mapContainer" class="map-container">
+      <div class="map-header">
+        <div class="map-info">
+          <span id="mapStatus">📍 Loading location...</span>
+          <button id="toggleMiniMapBtn" class="map-follow-btn" title="Minimize map">▾</button>
+          <span id="routeProgress"></span>
+        </div>
+        <div class="map-header-buttons">
+          <button id="followLocationBtn" class="map-follow-btn" title="Follow Location">🎯</button>
+          <button id="requestLocationBtn" class="map-location-btn" title="Request Location" style="display:none;">📍</button>
+          <button id="mapExpandBtn" class="map-expand-btn" title="Expand Map">⛶</button>
+        </div>
+      </div>
+      <div id="miniMap" class="mini-map"></div>
+      
+      <!-- Full Screen Map Overlay -->
+      <div id="fullMapOverlay" class="full-map-overlay hidden">
+        <div class="full-map-header">
+          <h3>Route Planning</h3>
+          <div class="map-controls">
+            <button id="centerOnUserBtn" class="map-btn">📍 My Location</button>
+            <button id="clearRouteBtn" class="map-btn">Clear Route</button>
+            <button id="addRoutePointModeBtn" class="map-btn">Add Point</button>
+            <button id="markerStyleBtn" class="map-btn" title="Cycle marker style">Marker: Cross</button>
+            <button id="optimizeRouteBtn" class="map-btn">Optimize</button>
           </div>
+          <button id="mapCloseBtn" class="map-close-btn">×</button>
+        </div>
+        <div id="fullMap" class="full-map"></div>
+        <div class="map-footer">
+          <div class="route-stats">
+            <span id="routeDistance">Distance: 0 km</span>
+            <span id="routeTime">Time: 0 min</span>
+            <span id="routePoints">Points: 0</span>
+          </div>
+        </div>
+      </div>
+    </div>
         </section>
       </div>
     </main>
-  </div>
+    </div>
 
   <!-- Leaflet.js for Maps -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />

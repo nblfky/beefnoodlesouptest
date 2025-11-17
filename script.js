@@ -71,12 +71,15 @@ window.addEventListener('DOMContentLoaded', () => {
 const screens = {
   home: document.getElementById('homeScreen'),
   visionMenu: document.getElementById('visionMenu'),
-  visionApp: document.getElementById('visionApp')
+  visionApp: document.getElementById('visionApp'),
+  batchUpload: document.getElementById('batchUploadScreen')
 };
 
 const visionEntryBtn = document.getElementById('visionEntry');
 const homeBackBtn = document.getElementById('homeBackBtn');
 const visionMenuBackBtn = document.getElementById('visionMenuBackBtn');
+const batchBackBtn = document.getElementById('batchBackBtn');
+const startScanningBtn = document.getElementById('startScanningBtn');
 const visionMenuTiles = document.querySelectorAll('[data-vision-target]');
 const visionTabButtons = document.querySelectorAll('.vision-tab');
 const visionViews = document.querySelectorAll('.vision-view');
@@ -95,8 +98,20 @@ function setActiveScreen(targetScreen) {
   }
 }
 
-function setVisionView(targetView = 'camera') {
-  const viewName = targetView || 'camera';
+function setVisionView(targetView = 'data') {
+  const viewName = targetView || 'data';
+  
+  // Update view title
+  const viewTitle = document.getElementById('currentViewTitle');
+  if (viewTitle) {
+    const titles = {
+      'camera': 'Scanner',
+      'data': 'Records',
+      'map': 'Map'
+    };
+    viewTitle.textContent = titles[viewName] || 'Vision';
+  }
+  
   visionTabButtons.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewName);
   });
@@ -139,15 +154,37 @@ if (homeBackBtn) {
 if (visionMenuBackBtn) {
   visionMenuBackBtn.addEventListener('click', () => {
     setActiveScreen(screens.visionMenu);
+  });
+}
+
+if (batchBackBtn) {
+  batchBackBtn.addEventListener('click', () => {
+    setActiveScreen(screens.visionMenu);
+  });
+}
+
+if (startScanningBtn) {
+  startScanningBtn.addEventListener('click', () => {
+    setActiveScreen(screens.visionApp);
     setVisionView('camera');
   });
 }
 
 visionMenuTiles.forEach(tile => {
   tile.addEventListener('click', () => {
-    const target = tile.dataset.visionTarget || 'camera';
-    setActiveScreen(screens.visionApp);
-    setVisionView(target);
+    const target = tile.dataset.visionTarget;
+    
+    // Ignore disabled tiles
+    if (tile.classList.contains('disabled')) {
+      return;
+    }
+    
+    if (target === 'batch') {
+      setActiveScreen(screens.batchUpload);
+    } else if (target === 'data' || target === 'map') {
+      setActiveScreen(screens.visionApp);
+      setVisionView(target);
+    }
   });
 });
 
@@ -245,17 +282,21 @@ const progressFill = document.getElementById('progressFill');
 // --- NEW: Scanning overlay elements ---
 const scanningOverlay = document.getElementById('scanningOverlay');
 const scanningText = document.querySelector('.scanning-text');
-// --- NEW: Image upload elements ---
-const uploadBtn = document.getElementById('uploadBtn');
-const imageInput = document.getElementById('imageInput');
 // --- NEW: Zoom control elements ---
 const zoomInBtn = document.getElementById('zoomIn');
 const zoomOutBtn = document.getElementById('zoomOut');
 const zoomResetBtn = document.getElementById('zoomReset');
 const zoomLevelSpan = document.getElementById('zoomLevel');
 
+// Batch upload elements
+const batchUploadBtn = document.getElementById('batchUploadBtn');
+const batchImageInput = document.getElementById('batchImageInput');
+const batchStatusDiv = document.getElementById('batchStatus');
+const batchTableBody = document.querySelector('#batchResultsTable tbody');
+
 // Persistent scans storage
 let scans = [];
+let batchScans = [];
 // --- Networking helpers and timeouts ---
 const GEO_FAST_TIMEOUT_MS = 3000; // 3s fast location for scans
 const SEARCH_TIMEOUT_MS = 4000;   // 4s for OneMap search
@@ -1239,12 +1280,12 @@ async function extractInfoGPT(rawText) {
   if (!hasOpenAIProxy()) return null;
   try {
     const data = await callOpenAIProxy('/v1/chat/completions', {
-      model: 'gpt-3.5-turbo',
-      temperature: 0,
-      messages: [
-        { role: 'system', content: 'You extract structured data from storefront OCR.' },
-        { role: 'user', content: `Extract JSON with keys: storeName, unitNumber, address, category. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" if unknown. OCR: """${rawText}"""` }
-      ]
+        model: 'gpt-3.5-turbo',
+        temperature: 0,
+        messages: [
+          { role: 'system', content: 'You extract structured data from storefront OCR.' },
+          { role: 'user', content: `Extract JSON with keys: storeName, unitNumber, address, category. For category, choose the most appropriate from: Art, Attractions, Auto, Beauty Services, Commercial Building, Education, Essentials, Financial, Food and Beverage, General Merchandise, Government Building, Healthcare, Home Services, Hotel, Industrial, Local Services, Mass Media, Nightlife, Physical Feature, Professional Services, Religious Organization, Residential, Sports and Fitness, Travel. Use "Not Found" if unknown. OCR: """${rawText}"""` }
+        ]
     });
     const content = data.choices?.[0]?.message?.content || '';
     const match = content.match(/\{[\s\S]*\}/);
@@ -2023,7 +2064,7 @@ async function processImageFile(file, currentIndex, total) {
   const objectUrl = URL.createObjectURL(workingFile);
   try {
     const img = await loadImage(objectUrl, workingFile.name || originalName);
-    const canvas = document.createElement('canvas');
+      const canvas = document.createElement('canvas');
     const width = img.naturalWidth || img.width;
     const height = img.naturalHeight || img.height;
 
@@ -2033,18 +2074,18 @@ async function processImageFile(file, currentIndex, total) {
 
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, width, height);
-
-    const photoCaptureEnabled = localStorage.getItem('photoCaptureEnabled') !== 'false';
-    if (photoCaptureEnabled) {
-      const photoSaved = await captureAndSavePhoto(canvas);
+      
+      const photoCaptureEnabled = localStorage.getItem('photoCaptureEnabled') !== 'false';
+      if (photoCaptureEnabled) {
+        const photoSaved = await captureAndSavePhoto(canvas);
       if (!photoSaved) {
-        console.warn('⚠️ Failed to save uploaded photo to gallery');
+          console.warn('⚠️ Failed to save uploaded photo to gallery');
+        }
       }
-    }
-
-    await performScanFromCanvas(canvas);
+      
+      await performScanFromCanvas(canvas);
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -2058,6 +2099,347 @@ function loadImage(src, label = 'image') {
     img.src = src;
   });
 }
+
+// Batch upload handler
+if (batchUploadBtn && batchImageInput) {
+  batchUploadBtn.addEventListener('click', () => batchImageInput.click());
+
+  batchImageInput.addEventListener('change', async e => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const total = files.length;
+    const failedFiles = [];
+
+    batchStatusDiv.textContent = `Preparing ${total} photo${total > 1 ? 's' : ''}…`;
+
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      try {
+        await processBatchImageFile(file, index + 1, total);
+      } catch (err) {
+        console.error('⚠️ Batch upload error:', err);
+        failedFiles.push(file.name || `Photo ${index + 1}`);
+      }
+    }
+
+    batchImageInput.value = '';
+
+    if (failedFiles.length) {
+      batchStatusDiv.textContent = `Processed ${total - failedFiles.length}/${total} photos. Failed: ${failedFiles.join(', ')}`;
+    } else {
+      batchStatusDiv.textContent = `Processed ${total}/${total} photos successfully.`;
+    }
+  });
+}
+
+async function processBatchImageFile(file, currentIndex, total) {
+  batchStatusDiv.textContent = `Processing photo ${currentIndex} of ${total}…`;
+
+  let workingFile = file;
+  const originalName = file.name || `photo_${currentIndex}`;
+  const isHeic = /heic|heif/i.test(file.type) || /\.heic$|\.heif$/i.test(originalName);
+
+  if (isHeic) {
+    if (typeof window.heic2any === 'function') {
+      batchStatusDiv.textContent = `Converting photo ${currentIndex} of ${total}…`;
+      try {
+        const conversionResult = await window.heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.9
+        });
+        const convertedBlob = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult;
+        if (!(convertedBlob instanceof Blob)) {
+          throw new Error('Conversion did not return a valid image blob.');
+        }
+        const newName = originalName.replace(/\.heic$|\.heif$/i, '.jpg');
+        workingFile = new File([convertedBlob], newName, { type: 'image/jpeg' });
+      } catch (_) {
+        throw new Error(`Could not convert HEIC photo (${originalName}).`);
+      }
+    } else {
+      throw new Error('HEIC images are not supported in this browser.');
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(workingFile);
+  try {
+    const img = await loadImage(objectUrl, workingFile.name || originalName);
+    const canvas = document.createElement('canvas');
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
+
+    if (!width || !height) {
+      throw new Error('Invalid image dimensions.');
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    // Save photo to storage
+    const photoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    
+    // Perform scan and add to batch table
+    await performBatchScanFromCanvas(canvas, photoDataUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function performBatchScanFromCanvas(canvas, photoDataUrl) {
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  
+  // Extract info using Vision AI
+  const visionData = await extractInfoVision(dataUrl);
+  
+  const scan = {
+    id: Date.now() + Math.random(),
+    timestamp: new Date().toISOString(),
+    photoDataUrl: photoDataUrl,
+    storeName: sanitizeString(visionData?.storeName),
+    unitNumber: sanitizeString(visionData?.unitNumber),
+    address: sanitizeString(visionData?.address),
+    category: sanitizeString(visionData?.category),
+    lat: '',
+    lng: '',
+    house_no: '',
+    street: '',
+    building: '',
+    postcode: '',
+    remarks: ''
+  };
+  
+  batchScans.push(scan);
+  saveBatchScans();
+  renderBatchTable();
+}
+
+function saveBatchScans() {
+  try {
+    localStorage.setItem('batchScans', JSON.stringify(batchScans));
+  } catch (err) {
+    console.error('Failed to save batch scans:', err);
+  }
+}
+
+function loadBatchScans() {
+  try {
+    const saved = localStorage.getItem('batchScans');
+    if (saved) {
+      batchScans = JSON.parse(saved);
+      renderBatchTable();
+    }
+  } catch (err) {
+    console.error('Failed to load batch scans:', err);
+  }
+}
+
+function renderBatchTable() {
+  if (!batchTableBody) return;
+  
+  batchTableBody.innerHTML = '';
+  
+  batchScans.forEach((scan, index) => {
+    const row = document.createElement('tr');
+    row.className = 'table-row';
+    row.dataset.scanId = scan.id;
+    
+    row.innerHTML = `
+      <td>${index + 1}</td>
+      <td class="photo-cell">
+        ${scan.photoDataUrl ? `
+          <img src="${scan.photoDataUrl}" class="photo-thumbnail" alt="Photo ${index + 1}">
+          <a href="${scan.photoDataUrl}" download="photo_${index + 1}.jpg" class="photo-download-btn">⬇</a>
+        ` : '<div class="no-photo">📷</div>'}
+      </td>
+      <td>${scan.storeName || ''}</td>
+      <td>${scan.lat && scan.lng ? `${scan.lat}, ${scan.lng}` : ''}</td>
+      <td>${scan.house_no || ''}</td>
+      <td>${scan.street || ''}</td>
+      <td>${scan.unitNumber || ''}</td>
+      <td>${scan.building || ''}</td>
+      <td>${scan.postcode || ''}</td>
+      <td><input type="text" class="remarks-input" value="${scan.remarks || ''}" data-scan-id="${scan.id}"></td>
+      <td class="actions-cell">
+        <button class="edit-btn" data-scan-id="${scan.id}">Edit</button>
+        <button class="delete-btn" data-scan-id="${scan.id}">Delete</button>
+      </td>
+    `;
+    
+    batchTableBody.appendChild(row);
+  });
+  
+  // Attach event listeners
+  attachBatchTableListeners();
+}
+
+function attachBatchTableListeners() {
+  // Remarks input
+  document.querySelectorAll('#batchResultsTable .remarks-input').forEach(input => {
+    input.addEventListener('change', e => {
+      const scanId = parseFloat(e.target.dataset.scanId);
+      const scan = batchScans.find(s => s.id === scanId);
+      if (scan) {
+        scan.remarks = e.target.value;
+        saveBatchScans();
+      }
+    });
+  });
+  
+  // Delete buttons
+  document.querySelectorAll('#batchResultsTable .delete-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const scanId = parseFloat(e.target.dataset.scanId);
+      if (confirm('Delete this entry?')) {
+        batchScans = batchScans.filter(s => s.id !== scanId);
+        saveBatchScans();
+        renderBatchTable();
+      }
+    });
+  });
+  
+  // Edit buttons
+  document.querySelectorAll('#batchResultsTable .edit-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const scanId = parseFloat(e.target.dataset.scanId);
+      const scan = batchScans.find(s => s.id === scanId);
+      if (scan) {
+        openBatchEditModal(scan);
+      }
+    });
+  });
+}
+
+function openBatchEditModal(scan) {
+  // Reuse the existing edit modal logic but for batch scans
+  const modal = document.createElement('div');
+  modal.className = 'edit-modal';
+  modal.innerHTML = `
+    <div class="edit-modal-content">
+      <h3>Edit Entry</h3>
+      <form class="edit-form">
+        <div class="edit-field">
+          <label>POI Name</label>
+          <input type="text" name="storeName" value="${scan.storeName || ''}">
+        </div>
+        <div class="edit-field">
+          <label>Unit Number</label>
+          <input type="text" name="unitNumber" value="${scan.unitNumber || ''}">
+        </div>
+        <div class="edit-field">
+          <label>House No</label>
+          <input type="text" name="house_no" value="${scan.house_no || ''}">
+        </div>
+        <div class="edit-field">
+          <label>Street</label>
+          <input type="text" name="street" value="${scan.street || ''}">
+        </div>
+        <div class="edit-field">
+          <label>Building</label>
+          <input type="text" name="building" value="${scan.building || ''}">
+        </div>
+        <div class="edit-field">
+          <label>Postcode</label>
+          <input type="text" name="postcode" value="${scan.postcode || ''}">
+        </div>
+        <div class="edit-actions">
+          <button type="button" class="save-btn">Save</button>
+          <button type="button" class="cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  modal.querySelector('.cancel-btn').addEventListener('click', () => {
+    document.body.removeChild(modal);
+  });
+  
+  modal.querySelector('.save-btn').addEventListener('click', () => {
+    const form = modal.querySelector('.edit-form');
+    scan.storeName = form.storeName.value;
+    scan.unitNumber = form.unitNumber.value;
+    scan.house_no = form.house_no.value;
+    scan.street = form.street.value;
+    scan.building = form.building.value;
+    scan.postcode = form.postcode.value;
+    saveBatchScans();
+    renderBatchTable();
+    document.body.removeChild(modal);
+  });
+  
+  modal.addEventListener('click', e => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  });
+}
+
+// Batch export button
+const batchExportBtn = document.getElementById('batchExportBtn');
+if (batchExportBtn) {
+  batchExportBtn.addEventListener('click', () => {
+    if (!batchScans.length) {
+      alert('No data to export');
+      return;
+    }
+    
+    const csv = convertToCSV(batchScans);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `batch_upload_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+// Batch clear button
+const batchClearBtn = document.getElementById('batchClearBtn');
+if (batchClearBtn) {
+  batchClearBtn.addEventListener('click', () => {
+    if (confirm('Clear all batch upload data?')) {
+      batchScans = [];
+      saveBatchScans();
+      renderBatchTable();
+      batchStatusDiv.textContent = 'All data cleared.';
+    }
+  });
+}
+
+// Batch download photos button
+const batchDownloadPhotosBtn = document.getElementById('batchDownloadPhotosBtn');
+if (batchDownloadPhotosBtn) {
+  batchDownloadPhotosBtn.addEventListener('click', async () => {
+    if (!batchScans.length) {
+      alert('No photos to download');
+      return;
+    }
+    
+    batchStatusDiv.textContent = 'Preparing photos for download...';
+    
+    for (let i = 0; i < batchScans.length; i++) {
+      const scan = batchScans[i];
+      if (scan.photoDataUrl) {
+        const a = document.createElement('a');
+        a.href = scan.photoDataUrl;
+        a.download = `batch_photo_${i + 1}_${scan.storeName || 'unknown'}.jpg`;
+        a.click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    batchStatusDiv.textContent = `Downloaded ${batchScans.length} photos.`;
+  });
+}
+
+// Load batch scans on startup
+loadBatchScans();
 
 // Extract structured information from raw OCR text
 function extractInfo(rawText, ocrLines = []) {
