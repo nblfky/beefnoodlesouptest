@@ -89,8 +89,8 @@ function initializeScreens() {
   batchBackBtn = document.getElementById('batchBackBtn');
   startScanningBtn = document.getElementById('startScanningBtn');
   visionMenuTiles = document.querySelectorAll('[data-vision-target]');
-  visionTabButtons = document.querySelectorAll('.vision-tab');
-  visionViews = document.querySelectorAll('.vision-view');
+  visionTabButtons = document.querySelectorAll('#visionApp .vision-tab');
+  visionViews = document.querySelectorAll('#visionApp .vision-view');
   
   // Setup event listeners
   setupNavigationListeners();
@@ -193,7 +193,6 @@ function setupNavigationListeners() {
       }
       
       if (target === 'batch') {
-        console.log('Opening batch upload screen', screens.batchUpload);
         setActiveScreen(screens.batchUpload);
       } else if (target === 'data' || target === 'map') {
         setActiveScreen(screens.visionApp);
@@ -296,6 +295,9 @@ const progressFill = document.getElementById('progressFill');
 // --- NEW: Scanning overlay elements ---
 const scanningOverlay = document.getElementById('scanningOverlay');
 const scanningText = document.querySelector('.scanning-text');
+// Legacy single upload elements (may be absent in DOM)
+const uploadBtn = document.getElementById('uploadBtn');
+const imageInput = document.getElementById('imageInput');
 // --- NEW: Zoom control elements ---
 const zoomInBtn = document.getElementById('zoomIn');
 const zoomOutBtn = document.getElementById('zoomOut');
