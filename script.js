@@ -4118,10 +4118,18 @@ function renderVanguardSummary(list) {
 
 function updateVanguardSummaryCounts(counts = {}) {
   if (!vanguardSummaryCounters) return;
-  vanguardSummaryCounters.openings?.textContent = String(counts.openings ?? 0);
-  vanguardSummaryCounters.closures?.textContent = String(counts.closures ?? 0);
-  vanguardSummaryCounters.relocations?.textContent = String(counts.relocations ?? 0);
-  vanguardSummaryCounters.renovations?.textContent = String(counts.renovations ?? 0);
+  if (vanguardSummaryCounters.openings) {
+    vanguardSummaryCounters.openings.textContent = String(counts.openings ?? 0);
+  }
+  if (vanguardSummaryCounters.closures) {
+    vanguardSummaryCounters.closures.textContent = String(counts.closures ?? 0);
+  }
+  if (vanguardSummaryCounters.relocations) {
+    vanguardSummaryCounters.relocations.textContent = String(counts.relocations ?? 0);
+  }
+  if (vanguardSummaryCounters.renovations) {
+    vanguardSummaryCounters.renovations.textContent = String(counts.renovations ?? 0);
+  }
 }
 
 function renderVanguardFeed(list) {
