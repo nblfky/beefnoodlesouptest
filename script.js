@@ -8,6 +8,15 @@ const OPENAI_PROXY_URL = (() => {
   return '/.netlify/functions/openai';
 })();
 
+const VANGUARD_NEWS_ENDPOINT = '/.netlify/functions/vanguard-news';
+const VANGUARD_DEFAULTS = {
+  keywords: 'store opening,Singapore',
+  country: 'sg',
+  category: 'business',
+  timeframe: '72h',
+  limit: 25
+};
+
 function hasOpenAIProxy() {
   return typeof OPENAI_PROXY_URL === 'string' && OPENAI_PROXY_URL.length > 0;
 }
@@ -74,10 +83,19 @@ window.addEventListener('DOMContentLoaded', () => {
 let screens = {};
 let visionEntryBtn, homeBackBtn, visionMenuBackBtn, batchBackBtn, startScanningBtn, versionHistoryBackBtn, guideBackBtn;
 let visionMenuTiles, visionTabButtons, visionViews;
+let vanguardOptionBtn, vanguardBackBtn, vanguardRefreshBtn;
+let vanguardFiltersForm, vanguardKeywordsInput, vanguardCountrySelect, vanguardCategorySelect, vanguardTimeframeSelect;
+let vanguardFeedContainer, vanguardFeedList, vanguardStatusLabel, vanguardEmptyState;
+let vanguardSummaryCounters = {};
+let vanguardInitialized = false;
+let vanguardArticles = [];
+let vanguardIsLoading = false;
+let vanguardLastQuery = null;
 
 function initializeScreens() {
   screens = {
     home: document.getElementById('homeScreen'),
+    vanguard: document.getElementById('vanguardScreen'),
     versionHistory: document.getElementById('versionHistoryScreen'),
     guide: document.getElementById('guideScreen'),
     visionMenu: document.getElementById('visionMenu'),
@@ -95,6 +113,24 @@ function initializeScreens() {
   visionMenuTiles = document.querySelectorAll('[data-vision-target]');
   visionTabButtons = document.querySelectorAll('#visionApp .vision-tab');
   visionViews = document.querySelectorAll('#visionApp .vision-view');
+  vanguardOptionBtn = document.getElementById('vanguardOption');
+  vanguardBackBtn = document.getElementById('vanguardBackBtn');
+  vanguardRefreshBtn = document.getElementById('vanguardRefreshBtn');
+  vanguardFiltersForm = document.getElementById('vanguardFiltersForm');
+  vanguardKeywordsInput = document.getElementById('vanguardKeywords');
+  vanguardCountrySelect = document.getElementById('vanguardCountry');
+  vanguardCategorySelect = document.getElementById('vanguardCategory');
+  vanguardTimeframeSelect = document.getElementById('vanguardTimeframe');
+  vanguardFeedContainer = document.getElementById('vanguardFeed');
+  vanguardFeedList = document.getElementById('vanguardFeedList');
+  vanguardStatusLabel = document.getElementById('vanguardStatus');
+  vanguardEmptyState = document.getElementById('vanguardEmptyState');
+  vanguardSummaryCounters = {
+    openings: document.getElementById('vanguardOpeningCount'),
+    closures: document.getElementById('vanguardClosureCount'),
+    relocations: document.getElementById('vanguardRelocationCount'),
+    renovations: document.getElementById('vanguardRenovationCount')
+  };
   
   // Setup event listeners
   setupNavigationListeners();
@@ -165,6 +201,33 @@ function setupNavigationListeners() {
   if (homeBackBtn) {
     homeBackBtn.addEventListener('click', () => {
       setActiveScreen(screens.home);
+    });
+  }
+
+  if (vanguardOptionBtn) {
+    vanguardOptionBtn.addEventListener('click', () => {
+      setActiveScreen(screens.vanguard);
+      ensureVanguardReady();
+      loadVanguardFeed({ reason: 'home-entry' });
+    });
+  }
+
+  if (vanguardBackBtn) {
+    vanguardBackBtn.addEventListener('click', () => {
+      setActiveScreen(screens.home);
+    });
+  }
+
+  if (vanguardRefreshBtn) {
+    vanguardRefreshBtn.addEventListener('click', () => {
+      loadVanguardFeed({ reason: 'refresh-click' });
+    });
+  }
+
+  if (vanguardFiltersForm) {
+    vanguardFiltersForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadVanguardFeed({ reason: 'filter-submit' });
     });
   }
 
@@ -3896,6 +3959,268 @@ function createMarkerIcon(status = 'pending', style = currentMarkerStyle) {
   if (style === 'dot') html = '<div class="dot-marker"></div>';
   if (style === 'circle') html = '<div class="circle-marker"></div>';
   return L.divIcon({ className: `scan-status-marker ${status}`, html, iconSize: [18,18], iconAnchor: [9,9] });
+}
+
+// ---------------------------
+// Vanguard News Intelligence
+// ---------------------------
+
+const VANGUARD_EVENT_ORDER = ['opening', 'closure', 'relocation', 'renovation', 'insight'];
+const VANGUARD_EVENT_LABELS = {
+  opening: 'Opening',
+  closure: 'Closure',
+  relocation: 'Relocation',
+  renovation: 'Renovation',
+  insight: 'Watch'
+};
+
+const VANGUARD_KEYWORD_RULES = [
+  { type: 'closure', pattern: /\b(close|closure|shutter|cease|shutting|wind\s?down|exit)\b/i },
+  { type: 'relocation', pattern: /\b(relocat|moving to|move to|shift to|reopen at|new location)\b/i },
+  { type: 'renovation', pattern: /\b(renovat|refurbish|revamp|redevelop|makeover)\b/i },
+  { type: 'opening', pattern: /\b(opening|launch|debut|unveil|new outlet|new branch|grand opening|expansion|opens)\b/i },
+];
+
+function ensureVanguardReady() {
+  if (vanguardInitialized) return;
+  vanguardInitialized = true;
+  if (vanguardKeywordsInput && !vanguardKeywordsInput.value) {
+    vanguardKeywordsInput.value = VANGUARD_DEFAULTS.keywords;
+  }
+  if (vanguardCountrySelect && !vanguardCountrySelect.value) {
+    vanguardCountrySelect.value = VANGUARD_DEFAULTS.country;
+  }
+  if (vanguardCategorySelect && !vanguardCategorySelect.value) {
+    vanguardCategorySelect.value = VANGUARD_DEFAULTS.category;
+  }
+  if (vanguardTimeframeSelect && !vanguardTimeframeSelect.value) {
+    vanguardTimeframeSelect.value = VANGUARD_DEFAULTS.timeframe;
+  }
+  updateVanguardSummaryCounts({ openings: 0, closures: 0, relocations: 0, renovations: 0 });
+}
+
+function getVanguardFilters() {
+  return {
+    keywords: (vanguardKeywordsInput?.value || VANGUARD_DEFAULTS.keywords).trim(),
+    countries: (vanguardCountrySelect?.value || VANGUARD_DEFAULTS.country).trim(),
+    categories: (vanguardCategorySelect?.value || VANGUARD_DEFAULTS.category).trim(),
+    timeframe: (vanguardTimeframeSelect?.value || VANGUARD_DEFAULTS.timeframe).trim(),
+    limit: VANGUARD_DEFAULTS.limit
+  };
+}
+
+function computeVanguardDateRange(timeframeKey = '72h') {
+  const map = { '24h': 1, '72h': 3, '7d': 7 };
+  const days = map[timeframeKey] ?? 3;
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - days);
+  return {
+    date_from: start.toISOString().split('T')[0],
+    date_to: end.toISOString().split('T')[0]
+  };
+}
+
+async function loadVanguardFeed({ reason = 'manual' } = {}) {
+  if (!vanguardFeedList) return;
+  ensureVanguardReady();
+
+  const filters = getVanguardFilters();
+  const dateRange = computeVanguardDateRange(filters.timeframe);
+  const query = new URLSearchParams({
+    keywords: filters.keywords,
+    limit: String(filters.limit),
+    sort: 'published_desc',
+    languages: 'en'
+  });
+
+  if (filters.countries) query.set('countries', filters.countries);
+  if (filters.categories) query.set('categories', filters.categories);
+  if (dateRange.date_from) query.set('date_from', dateRange.date_from);
+  if (dateRange.date_to) query.set('date_to', dateRange.date_to);
+
+  const queryString = query.toString();
+  if (vanguardIsLoading && queryString === vanguardLastQuery) {
+    return;
+  }
+
+  vanguardIsLoading = true;
+  vanguardLastQuery = queryString;
+  setVanguardLoadingState(true, reason);
+
+  try {
+    const res = await fetch(`${VANGUARD_NEWS_ENDPOINT}?${queryString}`);
+    if (!res.ok) {
+      throw new Error(`Feed error ${res.status}`);
+    }
+    const data = await res.json();
+    vanguardArticles = (data?.articles || []).map(enrichVanguardArticle);
+    renderVanguardFeed(vanguardArticles);
+    renderVanguardSummary(vanguardArticles);
+    const updatedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    updateVanguardStatus(`Updated ${updatedAt}`, 'success');
+  } catch (error) {
+    console.error('Vanguard feed error:', error);
+    updateVanguardStatus(`Unable to fetch news (${error.message})`, 'error');
+    renderVanguardFeed([]);
+    renderVanguardSummary([]);
+  } finally {
+    vanguardIsLoading = false;
+    setVanguardLoadingState(false);
+  }
+}
+
+function setVanguardLoadingState(isLoading, reason = '') {
+  if (!vanguardFeedContainer) return;
+  vanguardFeedContainer.classList.toggle('loading', !!isLoading);
+  if (isLoading) {
+    const label = reason === 'refresh-click' ? 'Refreshing signals…' : 'Scanning news sources…';
+    updateVanguardStatus(label, 'loading');
+  }
+}
+
+function updateVanguardStatus(text, state = 'idle') {
+  if (!vanguardStatusLabel) return;
+  vanguardStatusLabel.textContent = text;
+  vanguardStatusLabel.dataset.state = state;
+}
+
+function enrichVanguardArticle(article) {
+  const eventType = inferVanguardEventType(article);
+  return {
+    ...article,
+    eventType,
+    relativeTime: formatRelativeTime(article.publishedAt),
+    domain: extractDomain(article.url),
+  };
+}
+
+function inferVanguardEventType(article) {
+  const haystack = `${article?.title || ''} ${article?.description || ''}`.toLowerCase();
+  for (const rule of VANGUARD_KEYWORD_RULES) {
+    if (rule.pattern.test(haystack)) {
+      return rule.type;
+    }
+  }
+  return 'insight';
+}
+
+function renderVanguardSummary(list) {
+  const counters = { openings: 0, closures: 0, relocations: 0, renovations: 0 };
+  list.forEach((item) => {
+    if (item.eventType === 'opening') counters.openings += 1;
+    if (item.eventType === 'closure') counters.closures += 1;
+    if (item.eventType === 'relocation') counters.relocations += 1;
+    if (item.eventType === 'renovation') counters.renovations += 1;
+  });
+  updateVanguardSummaryCounts(counters);
+}
+
+function updateVanguardSummaryCounts(counts = {}) {
+  if (!vanguardSummaryCounters) return;
+  vanguardSummaryCounters.openings?.textContent = String(counts.openings ?? 0);
+  vanguardSummaryCounters.closures?.textContent = String(counts.closures ?? 0);
+  vanguardSummaryCounters.relocations?.textContent = String(counts.relocations ?? 0);
+  vanguardSummaryCounters.renovations?.textContent = String(counts.renovations ?? 0);
+}
+
+function renderVanguardFeed(list) {
+  if (!vanguardFeedList) return;
+
+  if (!list.length) {
+    vanguardFeedList.innerHTML = '';
+    if (vanguardEmptyState) {
+      vanguardEmptyState.style.display = 'flex';
+    }
+    return;
+  }
+
+  if (vanguardEmptyState) {
+    vanguardEmptyState.style.display = 'none';
+  }
+
+  const cards = list
+    .sort((a, b) => {
+      const priorityDiff = VANGUARD_EVENT_ORDER.indexOf(a.eventType) - VANGUARD_EVENT_ORDER.indexOf(b.eventType);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+    })
+    .map(createVanguardCardMarkup)
+    .join('');
+
+  vanguardFeedList.innerHTML = cards;
+}
+
+function createVanguardCardMarkup(article) {
+  const label = VANGUARD_EVENT_LABELS[article.eventType] || 'Watch';
+  const description = article.description ? escapeHtml(article.description) : 'No summary provided.';
+  const time = article.relativeTime || 'Just now';
+  const source = article.source ? escapeHtml(article.source) : 'Unknown source';
+  const domain = article.domain ? escapeHtml(article.domain) : '';
+  const badgeClass = `badge-${article.eventType}`;
+  const imageBlock = article.image
+    ? `<div class="vanguard-card-media">
+        <img src="${article.image}" alt="${escapeHtml(article.title || 'Article thumbnail')}">
+      </div>`
+    : '';
+
+  return `
+    <article class="vanguard-card ${badgeClass}">
+      <div class="vanguard-card-header">
+        <span class="vanguard-badge">${label}</span>
+        <span class="vanguard-time">${escapeHtml(time)}</span>
+      </div>
+      <h3>${escapeHtml(article.title || 'Untitled update')}</h3>
+      <p class="vanguard-description">${description}</p>
+      ${imageBlock}
+      <div class="vanguard-card-meta">
+        <span class="vanguard-source">${source}${domain ? ` · ${domain}` : ''}</span>
+        ${article.url ? `<a href="${article.url}" target="_blank" rel="noopener noreferrer">Open source ↗</a>` : ''}
+      </div>
+    </article>
+  `;
+}
+
+function formatRelativeTime(dateInput) {
+  if (!dateInput) return 'Just now';
+  const parsed = new Date(dateInput);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Just now';
+  }
+  const diffMs = parsed.getTime() - Date.now();
+  const units = [
+    { unit: 'day', ms: 1000 * 60 * 60 * 24 },
+    { unit: 'hour', ms: 1000 * 60 * 60 },
+    { unit: 'minute', ms: 1000 * 60 },
+  ];
+  for (const { unit, ms } of units) {
+    const value = diffMs / ms;
+    if (Math.abs(value) >= 1 || unit === 'minute') {
+      const formatter = new Intl.RelativeTimeFormat(navigator.language || 'en', { numeric: 'auto' });
+      return formatter.format(Math.round(value), unit);
+    }
+  }
+  return 'Just now';
+}
+
+function extractDomain(url) {
+  if (!url) return '';
+  try {
+    const { hostname } = new URL(url);
+    return hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function escapeHtml(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 const versionHistoryBtn = document.getElementById('versionHistoryBtn');

@@ -37,15 +37,96 @@
           <span class="option-title">Vision</span>
           <span class="option-subtitle">stirring data into discovery</span>
         </button>
-        <button id="vanguardOption" class="home-option disabled" aria-disabled="true">
+        <button id="vanguardOption" class="home-option">
           <span class="option-title">Vanguard</span>
-          <span class="option-subtitle">Coming soon...</span>
+          <span class="option-subtitle">AI news intelligence for POIs</span>
         </button>
       </div>
       <footer class="home-footer">
         <button id="versionHistoryBtn" class="link-btn" type="button">Version history</button>
         <span class="version-label">Version: <span id="appVersion">2.0.0</span></span>
       </footer>
+    </section>
+
+    <!-- Vanguard Screen -->
+    <section id="vanguardScreen" class="screen">
+      <div class="vanguard-app">
+        <div class="vanguard-topbar">
+          <button id="vanguardBackBtn" class="icon-btn" title="Back to home">⟵</button>
+          <div class="vanguard-title">
+            <p class="vanguard-eyebrow">beefnoodlesoup</p>
+            <h2>Vanguard</h2>
+            <span class="vanguard-tagline">AI scout for openings, closures & relocations</span>
+          </div>
+          <button id="vanguardRefreshBtn" class="icon-btn ghost" title="Refresh feed">⟳</button>
+        </div>
+
+        <form id="vanguardFiltersForm" class="vanguard-filters">
+          <label class="vanguard-filter vanguard-filter-grow">
+            <span>Focus</span>
+            <input type="text" id="vanguardKeywords" placeholder="store opening, closure, relocation" value="store opening,Singapore">
+          </label>
+          <label class="vanguard-filter">
+            <span>Country</span>
+            <select id="vanguardCountry">
+              <option value="sg" selected>SG</option>
+              <option value="my">MY</option>
+              <option value="id">ID</option>
+              <option value="ph">PH</option>
+              <option value="th">TH</option>
+              <option value="">All</option>
+            </select>
+          </label>
+          <label class="vanguard-filter">
+            <span>Category</span>
+            <select id="vanguardCategory">
+              <option value="business" selected>Business</option>
+              <option value="general">General</option>
+              <option value="">All</option>
+            </select>
+          </label>
+          <label class="vanguard-filter">
+            <span>Lookback</span>
+            <select id="vanguardTimeframe">
+              <option value="24h">24h</option>
+              <option value="72h" selected>72h</option>
+              <option value="7d">7 days</option>
+            </select>
+          </label>
+          <button type="submit" class="vanguard-apply-btn">Update feed</button>
+        </form>
+
+        <div class="vanguard-status" id="vanguardStatus">
+          Waiting for signals...
+        </div>
+
+        <div class="vanguard-summary" role="list" aria-live="polite">
+          <div class="vanguard-summary-card openings" role="listitem">
+            <span class="summary-label">Openings</span>
+            <strong id="vanguardOpeningCount">0</strong>
+          </div>
+          <div class="vanguard-summary-card closures" role="listitem">
+            <span class="summary-label">Closures</span>
+            <strong id="vanguardClosureCount">0</strong>
+          </div>
+          <div class="vanguard-summary-card relocations" role="listitem">
+            <span class="summary-label">Relocations</span>
+            <strong id="vanguardRelocationCount">0</strong>
+          </div>
+          <div class="vanguard-summary-card renovations" role="listitem">
+            <span class="summary-label">Renovations</span>
+            <strong id="vanguardRenovationCount">0</strong>
+          </div>
+        </div>
+
+        <div id="vanguardFeed" class="vanguard-feed">
+          <div class="vanguard-empty-state" id="vanguardEmptyState">
+            <span class="empty-icon">🧠</span>
+            <p>No signals yet. Refresh or broaden your filters.</p>
+          </div>
+          <div id="vanguardFeedList" class="vanguard-feed-list" aria-live="polite"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Version History Screen -->
